@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql, type MeetingNotes } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import { anthropic, MODEL, NOTES_SYSTEM } from "@/lib/claude";
+import { parseModelJson } from "@/lib/parse";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -54,11 +55,8 @@ export async function POST(_req: Request, { params }: Ctx) {
     .map((b) => (b as { text: string }).text)
     .join("");
 
-  let notes: MeetingNotes;
-  try {
-    // The model returns bare JSON; tolerate a stray fence.
-    notes = JSON.parse(text.replace(/^```(?:json)?|```$/gm, "").trim());
-  } catch {
+  const notes = parseModelJson<MeetingNotes>(text);
+  if (!notes) {
     return NextResponse.json({ error: "Could not parse the generated notes." }, { status: 502 });
   }
 

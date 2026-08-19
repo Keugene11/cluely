@@ -207,9 +207,13 @@ async function captureScreen() {
   const cap = 1568; // Claude downsamples beyond ~1568px on the long edge anyway
   const factor = Math.min(1, cap / Math.max(nativeW, nativeH));
 
-  const wasVisible = overlay && overlay.isVisible();
-  if (wasVisible) overlay.hide();
-  await new Promise((r) => setTimeout(r, 90)); // let the compositor drop it
+  // Hide our own windows for the frame — the panel and the guiding cursor —
+  // so neither ends up in the screenshot Claude reads.
+  const overlayWasVisible = overlay && overlay.isVisible();
+  const cursorWasVisible = cursorWindow && cursorWindow.isVisible();
+  if (overlayWasVisible) overlay.hide();
+  if (cursorWasVisible) cursorWindow.hide();
+  await new Promise((r) => setTimeout(r, 90)); // let the compositor drop them
 
   try {
     const sources = await desktopCapturer.getSources({
@@ -226,9 +230,13 @@ async function captureScreen() {
   } catch {
     return null;
   } finally {
-    if (wasVisible) {
+    if (overlayWasVisible) {
       overlay.show();
       overlay.setAlwaysOnTop(true, "screen-saver");
+    }
+    if (cursorWasVisible) {
+      cursorWindow.showInactive();
+      cursorWindow.setAlwaysOnTop(true, "screen-saver");
     }
   }
 }

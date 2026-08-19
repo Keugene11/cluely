@@ -1,6 +1,6 @@
 {
   "name": "cluely",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -12,7 +12,10 @@
     "desktop:only": "electron .",
     "icon": "node scripts/make-icon.js",
     "dist": "node scripts/make-icon.js && electron-builder --win",
-    "dist:dir": "node scripts/make-icon.js && electron-builder --win --dir"
+    "dist:dir": "node scripts/make-icon.js && electron-builder --win --dir",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim": "electron scripts/sim/run.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
@@ -41,6 +44,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5",
+    "vitest": "^4.1.11",
     "wait-on": "^9.1.0"
   },
   "packageManager": "pnpm@10.29.3",

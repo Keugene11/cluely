@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { margin: 0; box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; }
+      html, body { height: 100%; background: #1b1d21; color: #d7d9dd; overflow: hidden; }
+      .app { display: flex; flex-direction: column; height: 100vh; }
+
+      /* Top bar */
+      .topbar {
+        height: 6%;
+        display: flex; align-items: center; gap: 20px;
+        padding: 0 16px; background: #232629; border-bottom: 1px solid #34383d; font-size: 13px;
+      }
+      .topbar .brand { font-weight: 700; color: #fff; }
+      .topbar .menu { color: #aeb2b8; }
+      .topbar .spacer { flex: 1; }
+      .btn-export {
+        background: #d94f4f; color: #fff; font-weight: 600; font-size: 13px;
+        padding: 7px 18px; border-radius: 6px;
+      }
+
+      .middle { flex: 1; display: flex; min-height: 0; }
+
+      /* Left tool rail */
+      .rail {
+        width: 62px; background: #232629; border-right: 1px solid #34383d;
+        display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 12px; font-size: 10px;
+      }
+      .rail .tool { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0; width: 100%; color: #9aa0a6; }
+      .rail .tool .ico { width: 22px; height: 22px; border-radius: 5px; background: #34383d; }
+      .rail .tool.active { color: #fff; }
+      .rail .tool.active .ico { background: #4a6fd4; }
+
+      /* Media pool */
+      .pool { width: 220px; background: #202327; border-right: 1px solid #34383d; padding: 12px; }
+      .pool h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #7f858c; margin-bottom: 10px; }
+      .clip { height: 46px; background: #2b2f34; border-radius: 5px; margin-bottom: 8px; display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: #c2c6cc; }
+
+      /* Viewer */
+      .viewer { flex: 1; display: flex; flex-direction: column; background: #17191c; }
+      .screen { flex: 1; margin: 16px; border-radius: 8px; background: linear-gradient(135deg, #2a3550, #3a2a44); display: flex; align-items: center; justify-content: center; color: #6b7280; }
+      .transport { height: 44px; display: flex; align-items: center; justify-content: center; gap: 18px; background: #202327; border-top: 1px solid #34383d; }
+      .transport .play { width: 34px; height: 34px; border-radius: 50%; background: #4a6fd4; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+      .transport .ctrl { color: #9aa0a6; font-size: 13px; }
+
+      /* Inspector */
+      .inspector { width: 240px; background: #202327; border-left: 1px solid #34383d; padding: 12px; }
+      .inspector h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #7f858c; margin-bottom: 12px; }
+      .field { margin-bottom: 12px; }
+      .field label { font-size: 11px; color: #9aa0a6; display: block; margin-bottom: 4px; }
+      .field .val { height: 26px; background: #2b2f34; border-radius: 4px; }
+
+      /* Timeline */
+      .timeline { height: 24%; background: #1c1e22; border-top: 1px solid #34383d; padding: 10px 14px; }
+      .track { height: 34px; background: #26292e; border-radius: 4px; margin-bottom: 8px; display: flex; gap: 6px; padding: 4px; }
+      .seg { height: 100%; border-radius: 3px; }
+      .seg.v { background: #3f6ad8; width: 32%; }
+      .seg.v2 { background: #5b8def; width: 24%; }
+      .seg.a { background: #3fae6a; width: 46%; }
+
+      /* Bottom page tabs (Resolve-style) */
+      .pages { height: 5%; display: flex; align-items: center; justify-content: center; gap: 26px; background: #232629; border-top: 1px solid #34383d; font-size: 12px; color: #9aa0a6; }
+      .pages .page.active { color: #fff; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="topbar">
+        <span class="brand">ClipStudio</span>
+        <span class="menu">File</span>
+        <span class="menu">Edit</span>
+        <span class="menu">Clip</span>
+        <span class="menu">Timeline</span>
+        <span class="spacer"></span>
+        <span class="btn-export">Export</span>
+      </div>
+
+      <div class="middle">
+        <div class="rail">
+          <div class="tool active"><span class="ico"></span>Edit</div>
+          <div class="tool"><span class="ico"></span>Effects</div>
+          <div class="tool"><span class="ico"></span>Text</div>
+          <div class="tool"><span class="ico"></span>Audio</div>
+        </div>
+
+        <div class="pool">
+          <h4>Media Pool</h4>
+          <div class="clip">🎬 intro.mp4</div>
+          <div class="clip">🎬 interview.mp4</div>
+          <div class="clip">🎵 music.mp3</div>
+        </div>
+
+        <div class="viewer">
+          <div class="screen">Preview</div>
+          <div class="transport">
+            <span class="ctrl">⏮</span>
+            <span class="play">▶</span>
+            <span class="ctrl">⏭</span>
+          </div>
+        </div>
+
+        <div class="inspector">
+          <h4>Inspector</h4>
+          <div class="field"><label>Position</label><div class="val"></div></div>
+          <div class="field"><label>Scale</label><div class="val"></div></div>
+          <div class="field"><label>Opacity</label><div class="val"></div></div>
+        </div>
+      </div>
+
+      <div class="timeline">
+        <div class="track"><span class="seg v"></span><span class="seg v2"></span></div>
+        <div class="track"><span class="seg a"></span></div>
+      </div>
+
+      <div class="pages">
+        <span class="page">Media</span>
+        <span class="page active">Edit</span>
+        <span class="page">Color</span>
+        <span class="page">Audio</span>
+        <span class="page">Deliver</span>
+      </div>
+    </div>
+  </body>
+</html>

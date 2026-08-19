@@ -2,10 +2,9 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { sql } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import { anthropic, MODEL, LIVE_SYSTEM } from "@/lib/claude";
+import { parseImageDataUrl } from "@/lib/parse";
 
 export const maxDuration = 60;
-
-const IMAGE_RE = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/;
 
 /**
  * The Ctrl/Cmd+Enter path: takes the live transcript tail plus an optional typed
@@ -27,8 +26,8 @@ export async function POST(req: Request) {
   const tail = String(transcript ?? "").slice(-6000);
   const ask = String(question ?? "").trim();
 
-  const match = typeof image === "string" ? image.match(IMAGE_RE) : null;
-  const hasScreen = Boolean(match);
+  const parsedImage = parseImageDataUrl(image);
+  const hasScreen = Boolean(parsedImage);
 
   const prompt = [
     context && `What the user gave you ahead of the call:\n${context}`,
@@ -45,14 +44,10 @@ export async function POST(req: Request) {
 
   // Vision: put the screenshot before the text so Claude reads it as context.
   const content: Anthropic.ContentBlockParam[] = [];
-  if (match) {
+  if (parsedImage) {
     content.push({
       type: "image",
-      source: {
-        type: "base64",
-        media_type: match[1] as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
-        data: match[2],
-      },
+      source: { type: "base64", media_type: parsedImage.mediaType, data: parsedImage.data },
     });
   }
   content.push({ type: "text", text: prompt });

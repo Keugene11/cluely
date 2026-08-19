@@ -2,17 +2,14 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
 import { anthropic, MODEL, GUIDE_SYSTEM } from "@/lib/claude";
+import { clampPoint, parseImageDataUrl, parseModelJson, type Point } from "@/lib/parse";
 
 export const maxDuration = 60;
 
-const IMAGE_RE = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/;
-
-export type GuideStep = { instruction: string };
-export type GuidePoint = { x: number; y: number; label: string };
 export type GuideResult = {
   say: string;
   steps: string[];
-  point: GuidePoint | null;
+  point: Point | null;
 };
 
 /**
@@ -24,9 +21,9 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { question, image } = await req.json();
-  const match = typeof image === "string" ? image.match(IMAGE_RE) : null;
+  const parsed = parseImageDataUrl(image);
 
-  if (!match) {
+  if (!parsed) {
     return NextResponse.json(
       { error: "Guiding needs a screenshot — this only works in the desktop app." },
       { status: 400 },
@@ -38,11 +35,7 @@ export async function POST(req: Request) {
   const content: Anthropic.ContentBlockParam[] = [
     {
       type: "image",
-      source: {
-        type: "base64",
-        media_type: match[1] as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
-        data: match[2],
-      },
+      source: { type: "base64", media_type: parsed.mediaType, data: parsed.data },
     },
     {
       type: "text",
@@ -56,7 +49,7 @@ export async function POST(req: Request) {
   try {
     response = await anthropic().messages.create({
       model: MODEL,
-      max_tokens: 1500,
+      max_tokens: 2500, // headroom so adaptive thinking can't truncate the JSON
       system: GUIDE_SYSTEM,
       thinking: { type: "adaptive" },
       output_config: { effort: "medium" },
@@ -75,18 +68,16 @@ export async function POST(req: Request) {
     .map((b) => (b as { text: string }).text)
     .join("");
 
-  let result: GuideResult;
-  try {
-    result = JSON.parse(text.replace(/^```(?:json)?|```$/gm, "").trim());
-  } catch {
+  const parsedResult = parseModelJson<GuideResult>(text);
+  if (!parsedResult) {
     return NextResponse.json({ error: "Could not read the guidance." }, { status: 502 });
   }
 
-  // Clamp coordinates so a stray value can never send the cursor off screen.
-  if (result.point) {
-    result.point.x = Math.min(1, Math.max(0, Number(result.point.x) || 0.5));
-    result.point.y = Math.min(1, Math.max(0, Number(result.point.y) || 0.5));
-  }
+  const result: GuideResult = {
+    say: typeof parsedResult.say === "string" ? parsedResult.say : "",
+    steps: Array.isArray(parsedResult.steps) ? parsedResult.steps.map(String) : [],
+    point: clampPoint(parsedResult.point),
+  };
 
   return NextResponse.json({ result });
 }
