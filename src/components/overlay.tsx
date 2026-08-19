@@ -36,17 +36,15 @@ export function Overlay() {
   const [desktop, setDesktop] = useState<DesktopBridge | null>(null);
   const [mode, setMode] = useState<Mode>("assist");
   const [voiceOn, setVoiceOn] = useState(true);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true); // show the panel + instructions on launch
   const guide = useGuide(voiceOn);
   const act = useAct(voiceOn);
   const voice = useVoice();
 
   const [hidden, setHidden] = useState(false);
-  const [clickThrough, setClickThrough] = useState(false);
   const [update, setUpdate] = useState<UpdateState | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const startedRef = useRef(false);
 
   // Bridge wiring.
   useEffect(() => {
@@ -54,15 +52,9 @@ export function Overlay() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDesktop(bridge);
     if (!bridge) return;
-    void bridge.getState().then((s) => {
-      setHidden(s.contentProtection);
-      setClickThrough(s.clickThrough);
-    });
+    void bridge.getState().then((s) => setHidden(s.contentProtection));
     void bridge.getUpdateState().then(setUpdate);
-    const offState = bridge.onState((s) => {
-      setHidden(s.contentProtection);
-      setClickThrough(s.clickThrough);
-    });
+    const offState = bridge.onState((s) => setHidden(s.contentProtection));
     const offUpdate = bridge.onUpdate(setUpdate);
     const offVoice = bridge.onVoiceGuide(() => {
       setMode("guide");
@@ -95,14 +87,10 @@ export function Overlay() {
     };
   }, []);
 
-  // Assist needs a session for the transcript + hotkey to work — create one
-  // silently the first time Assist is used, no "name your call" screen.
-  useEffect(() => {
-    if (mode === "assist" && !live.sessionId && !live.starting && !startedRef.current) {
-      startedRef.current = true;
-      void live.start("Live session", "meeting");
-    }
-  }, [mode, live]);
+  // No auto-listening: the desktop overlay answers from your screen + your
+  // question (typed or spoken via the mic). Continuous browser transcription is
+  // unreliable in Electron, so we don't start it — that's what produced the
+  // confusing "transcription unavailable" error on launch.
 
   // Global hotkey (Ctrl+Enter) → assist, and open the panel.
   useEffect(() => {
@@ -183,22 +171,13 @@ export function Overlay() {
           </IconBtn>
 
           {desktop && (
-            <>
-              <IconBtn
-                active={clickThrough}
-                onClick={async () => setClickThrough(await desktop.setClickThrough(!clickThrough))}
-                title="Click-through (Ctrl+Shift+H)"
-              >
-                <MousePointerClick className="h-4 w-4" />
-              </IconBtn>
-              <IconBtn
-                active={hidden}
-                onClick={async () => setHidden(await desktop.setContentProtection(!hidden))}
-                title={hidden ? "Hidden from capture" : "Visible in capture"}
-              >
-                {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </IconBtn>
-            </>
+            <IconBtn
+              active={hidden}
+              onClick={async () => setHidden(await desktop.setContentProtection(!hidden))}
+              title={hidden ? "Hidden from screen recording" : "Visible in screen recording"}
+            >
+              {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </IconBtn>
           )}
 
           <IconBtn onClick={() => desktop?.quit()} title="Quit">
@@ -222,9 +201,7 @@ export function Overlay() {
       {/* The expanding panel */}
       {panelOpen && (
         <div className="cpanel rise mt-2 overflow-hidden" style={noDrag}>
-          {mode === "assist" && (
-            <AssistPanel live={live} onAsk={askAssist} voice={voice} hasDesktop={Boolean(desktop)} />
-          )}
+          {mode === "assist" && <AssistPanel live={live} onAsk={askAssist} voice={voice} />}
           {mode === "guide" && <GuidePanel guide={guide} voice={voice} hasDesktop={Boolean(desktop)} />}
           {mode === "act" && <ActPanel act={act} voice={voice} hasDesktop={Boolean(desktop)} />}
         </div>
@@ -239,12 +216,10 @@ function AssistPanel({
   live,
   onAsk,
   voice,
-  hasDesktop,
 }: {
   live: ReturnType<typeof useLiveSession>;
   onAsk: () => void;
   voice: ReturnType<typeof useVoice>;
-  hasDesktop: boolean;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -254,13 +229,13 @@ function AssistPanel({
   return (
     <>
       <div className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
-        {live.micError && <p className="notice">{live.micError}</p>}
-
-        {live.assists.length === 0 && !live.capturing && !live.micError && (
-          <p className="px-1 py-6 text-center text-sm text-muted">
-            Ask anything, or press <kbd className="kbd-mini">⌘↵</kbd> and I&rsquo;ll answer what&rsquo;s on
-            your screen{hasDesktop ? "" : ""}.
-          </p>
+        {live.assists.length === 0 && !live.capturing && (
+          <div className="px-2 py-5 text-center">
+            <p className="text-sm text-foreground">Ask me anything — I can see your screen.</p>
+            <p className="mt-1.5 text-xs text-muted">
+              Type below and press Enter, or tap the mic to talk.
+            </p>
+          </div>
         )}
 
         {live.assists.map((a, i) => (
