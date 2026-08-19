@@ -324,28 +324,71 @@ function GuidePanel({
 
         {guide.result && (
           <div className="answer-card space-y-3 p-3.5">
+            {guide.result.steps?.length > 0 && !guide.result.done && (
+              <p className="text-[11px] font-medium uppercase tracking-widest text-indigo-300">
+                Step {Math.min(guide.step + 1, guide.result.steps.length)} of{" "}
+                {guide.result.steps.length}
+              </p>
+            )}
+
             <p className="text-[13px] leading-relaxed">{guide.result.say}</p>
-            {guide.result.point && (
+
+            {guide.result.point && !guide.result.done && (
               <p className="flex items-center gap-1.5 text-xs text-indigo-300">
                 <MousePointerClick className="h-3.5 w-3.5" /> Pointing at{" "}
                 <span className="text-foreground">{guide.result.point.label}</span>
               </p>
             )}
+
             {guide.result.steps?.length > 0 && (
               <ol className="space-y-1.5 text-[13px]">
-                {guide.result.steps.map((s, i) => (
-                  <li key={i} className="flex gap-2.5 leading-relaxed">
-                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-400/20 text-[10px] text-indigo-200">
-                      {i + 1}
-                    </span>
-                    <span>{s}</span>
-                  </li>
-                ))}
+                {guide.result.steps.map((s, i) => {
+                  const state = i < guide.step ? "past" : i === guide.step ? "now" : "future";
+                  return (
+                    <li key={i} className="flex gap-2.5 leading-relaxed">
+                      <span
+                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                          state === "now"
+                            ? "bg-indigo-400 text-black"
+                            : state === "past"
+                              ? "bg-emerald-400/20 text-emerald-200"
+                              : "bg-white/10 text-muted"
+                        }`}
+                      >
+                        {state === "past" ? "✓" : i + 1}
+                      </span>
+                      <span className={state === "future" ? "text-muted" : ""}>{s}</span>
+                    </li>
+                  );
+                })}
               </ol>
             )}
-            <button onClick={guide.clear} className="text-xs text-muted hover:text-foreground">
-              Clear the pointer
-            </button>
+
+            {guide.result.done ? (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs text-emerald-300">
+                  <Wand2 className="h-3.5 w-3.5" /> That&rsquo;s the whole thing.
+                </span>
+                <button onClick={guide.clear} className="text-xs text-muted hover:text-foreground">
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <button onClick={guide.clear} className="text-xs text-muted hover:text-foreground">
+                  Stop
+                </button>
+                {guide.result.steps?.length > 1 && (
+                  <button
+                    onClick={() => void guide.next()}
+                    disabled={guide.working}
+                    className="cbtn-primary"
+                  >
+                    {guide.working ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Next step →"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -355,7 +398,7 @@ function GuidePanel({
         onChange={setQ}
         onSubmit={submit}
         busy={guide.working}
-        placeholder="How do I…?"
+        placeholder={guide.result ? "Ask a follow-up…" : "How do I…?"}
         mic={{ listening: guide.listening, toggle: guide.listening ? guide.stopListening : guide.listen }}
       />
     </>

@@ -7,6 +7,7 @@ export type GuideResult = {
   say: string;
   steps: string[];
   point: { x: number; y: number; label: string } | null;
+  done: boolean;
 };
 
 /** Minimal shape of the Web Speech API we depend on for voice input. */
@@ -59,18 +60,23 @@ export function useGuide(voiceEnabled: boolean) {
   const [working, setWorking] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState(0); // which step of the walkthrough we're on
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceEnabledRef = useRef(voiceEnabled);
   useEffect(() => void (voiceEnabledRef.current = voiceEnabled), [voiceEnabled]);
 
-  const guide = useCallback(async (question: string) => {
+  // Walkthrough context so `next()` can continue the same task on a fresh shot.
+  const goalRef = useRef("");
+  const stepsRef = useRef<string[]>([]);
+  const stepRef = useRef(0);
+
+  const call = useCallback(async (body: Record<string, unknown>) => {
     const desktop = getDesktop();
     if (!desktop?.captureScreen) {
       setError("Guiding needs the desktop app — it reads your screen.");
-      return;
+      return null;
     }
-
     setWorking(true);
     setError(null);
 
@@ -78,31 +84,58 @@ export function useGuide(voiceEnabled: boolean) {
     if (!image) {
       setWorking(false);
       setError("Couldn't capture your screen.");
-      return;
+      return null;
     }
 
     const res = await fetch("/api/guide", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, image }),
+      body: JSON.stringify({ ...body, image }),
     });
-
     setWorking(false);
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.error ?? "The guide failed.");
-      return;
+      const b = await res.json().catch(() => ({}));
+      setError(b.error ?? "The guide failed.");
+      return null;
     }
 
-    const { result: next } = (await res.json()) as { result: GuideResult };
-    setResult(next);
-    speak(next.say, voiceEnabledRef.current);
-    if (next.point) desktop.point(next.point);
+    const { result } = (await res.json()) as { result: GuideResult };
+    setResult(result);
+    speak(result.say, voiceEnabledRef.current);
+    if (result.point) desktop.point(result.point);
     else desktop.clearPoint();
+    return result;
   }, []);
+
+  /** Start a fresh walkthrough for a goal. */
+  const guide = useCallback(
+    async (question: string) => {
+      goalRef.current = question;
+      stepRef.current = 0;
+      setStep(0);
+      const result = await call({ question });
+      if (result) stepsRef.current = result.steps;
+    },
+    [call],
+  );
+
+  /** Advance to the next step: re-read the (now changed) screen and re-point. */
+  const next = useCallback(async () => {
+    const nextIndex = stepRef.current + 1;
+    stepRef.current = nextIndex;
+    setStep(nextIndex);
+    await call({ goal: goalRef.current, steps: stepsRef.current, stepIndex: nextIndex });
+  }, [call]);
+
+  /** A follow-up question mid-walkthrough, keeping the same goal. */
+  const followUp = useCallback((question: string) => guide(question), [guide]);
 
   const clear = useCallback(() => {
     setResult(null);
+    setStep(0);
+    stepRef.current = 0;
+    stepsRef.current = [];
+    goalRef.current = "";
     getDesktop()?.clearPoint();
     if (typeof window !== "undefined") window.speechSynthesis?.cancel();
   }, []);
@@ -149,5 +182,17 @@ export function useGuide(voiceEnabled: boolean) {
     setListening(false);
   }, []);
 
-  return { result, working, listening, error, guide, listen, stopListening, clear };
+  return {
+    result,
+    working,
+    listening,
+    error,
+    step,
+    guide,
+    next,
+    followUp,
+    listen,
+    stopListening,
+    clear,
+  };
 }

@@ -10,6 +10,7 @@ export type GuideResult = {
   say: string;
   steps: string[];
   point: Point | null;
+  done: boolean;
 };
 
 /**
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { question, image } = await req.json();
+  const { question, image, goal, steps, stepIndex } = await req.json();
   const parsed = parseImageDataUrl(image);
 
   if (!parsed) {
@@ -31,18 +32,32 @@ export async function POST(req: Request) {
   }
 
   const ask = String(question ?? "").trim();
+  const plan = Array.isArray(steps) ? (steps as string[]) : [];
+  const continuing = plan.length > 0 && Number.isInteger(stepIndex);
+
+  // Build the instruction: initial ask vs. continuing a walkthrough on a fresh
+  // screenshot (the screen has changed since the user did the previous step).
+  let instruction: string;
+  if (continuing) {
+    const idx = Math.max(0, Math.min(stepIndex as number, plan.length - 1));
+    instruction = [
+      `The user is being walked through this goal: "${String(goal ?? "").trim() || ask}".`,
+      `The plan is:\n${plan.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+      `They have done the earlier steps. They are now on step ${idx + 1}: "${plan[idx]}".`,
+      "Look at the FRESH screenshot and point at the element for this step. If the task now looks complete, set done to true.",
+    ].join("\n\n");
+  } else {
+    instruction = ask
+      ? `The user asks: ${ask}`
+      : "The user asked for help with what's on screen but didn't say what. Guide them on the most useful next step for whatever they're working on.";
+  }
 
   const content: Anthropic.ContentBlockParam[] = [
     {
       type: "image",
       source: { type: "base64", media_type: parsed.mediaType, data: parsed.data },
     },
-    {
-      type: "text",
-      text: ask
-        ? `The user asks: ${ask}`
-        : "The user asked for help with what's on screen but didn't say what. Guide them on the most useful next step for whatever they're working on.",
-    },
+    { type: "text", text: instruction },
   ];
 
   let response;
@@ -75,8 +90,10 @@ export async function POST(req: Request) {
 
   const result: GuideResult = {
     say: typeof parsedResult.say === "string" ? parsedResult.say : "",
-    steps: Array.isArray(parsedResult.steps) ? parsedResult.steps.map(String) : [],
+    // On a continuation, keep the original plan so the step list stays stable.
+    steps: continuing ? plan : Array.isArray(parsedResult.steps) ? parsedResult.steps.map(String) : [],
     point: clampPoint(parsedResult.point),
+    done: Boolean(parsedResult.done),
   };
 
   return NextResponse.json({ result });
