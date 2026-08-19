@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampPoint, parseImageDataUrl, parseModelJson } from "@/lib/parse";
+import { clampPoint, isSafeLaunchTarget, parseImageDataUrl, parseModelJson } from "@/lib/parse";
 
 describe("parseImageDataUrl", () => {
   it("splits a valid png data url", () => {
@@ -78,5 +78,28 @@ describe("clampPoint", () => {
     expect(clampPoint(null)).toBeNull();
     expect(clampPoint("nope")).toBeNull();
     expect(clampPoint(undefined)).toBeNull();
+  });
+});
+
+describe("isSafeLaunchTarget", () => {
+  it("accepts the forms the model is told to produce", () => {
+    expect(isSafeLaunchTarget("spotify")).toBe(true);
+    expect(isSafeLaunchTarget("ms-settings:")).toBe(true);
+    expect(isSafeLaunchTarget("https://gmail.com")).toBe(true);
+    expect(isSafeLaunchTarget("https://www.google.com/search?q=weather+today")).toBe(true);
+  });
+
+  it("rejects whitespace, which is how extra arguments would be smuggled in", () => {
+    expect(isSafeLaunchTarget("notepad file.txt")).toBe(false);
+    expect(isSafeLaunchTarget("notepad\tfile.txt")).toBe(false);
+    expect(isSafeLaunchTarget("calc\r\nshutdown")).toBe(false);
+  });
+
+  it("rejects empty, oversized, and non-string targets", () => {
+    expect(isSafeLaunchTarget("")).toBe(false);
+    expect(isSafeLaunchTarget("a".repeat(400))).toBe(false);
+    expect(isSafeLaunchTarget(null)).toBe(false);
+    expect(isSafeLaunchTarget(undefined)).toBe(false);
+    expect(isSafeLaunchTarget(42)).toBe(false);
   });
 });

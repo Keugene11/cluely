@@ -40,6 +40,19 @@ export function parseModelJson<T = unknown>(text: string): T | null {
   }
 }
 
+/**
+ * Whether a launch target is safe to hand to the executor.
+ *
+ * The executor passes this to Start-Process inside single quotes (with quotes
+ * escaped), so it cannot break out into a shell command on its own. This is the
+ * belt to that suspenders: reject empty, absurdly long, or whitespace/control
+ * character targets, which is all that is left to go wrong.
+ */
+export function isSafeLaunchTarget(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  return value.length > 0 && value.length < 400 && !/[\r\n\t ]/.test(value);
+}
+
 export type Point = { x: number; y: number; label: string };
 
 /**

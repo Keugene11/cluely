@@ -20,12 +20,15 @@ export type DesktopBridge = {
   open: (target: string) => Promise<{ ok: boolean; message: string }>;
   point: (target: { x: number; y: number; label: string }) => Promise<void>;
   clearPoint: () => Promise<void>;
+  /** Fly the cursor to a normalized point and press it for real. */
+  click: (target: { x: number; y: number; label: string }) => Promise<{ ok: boolean; message: string }>;
   onPointTo: (
     callback: (target: { x: number; y: number; label: string } | null) => void,
   ) => () => void;
+  /** Cursor window only: the moment a real click fires, for the press animation. */
+  onPress?: (callback: () => void) => () => void;
   onVoiceGuide: (callback: () => void) => () => void;
   setContentProtection: (enabled: boolean) => Promise<boolean>;
-  setClickThrough: (enabled: boolean) => Promise<boolean>;
   hide: () => Promise<void>;
   quit: () => Promise<void>;
   getUpdateState: () => Promise<UpdateState>;

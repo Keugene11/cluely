@@ -197,7 +197,7 @@ export function LiveSession() {
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-          {live.assists.length === 0 && (
+          {live.entries.length === 0 && (
             <div className="space-y-3 text-sm text-muted">
               <p>
                 Hit <kbd>Ctrl</kbd> + <kbd>Enter</kbd> at any point and I answer whatever was just
@@ -207,23 +207,34 @@ export function LiveSession() {
             </div>
           )}
 
-          {live.assists.map((assist, i) => (
+          {live.entries.map((entry, i) => (
             <div
               key={i}
               className="rise rounded-xl border border-line bg-surface/80 p-4 backdrop-blur"
             >
-              {assist.question && (
-                <p className="mb-2 text-xs uppercase tracking-widest text-muted">
-                  {assist.question}
-                </p>
+              {entry.question && (
+                <p className="mb-2 text-xs uppercase tracking-widest text-muted">{entry.question}</p>
               )}
-              {assist.answer ? (
-                <AnswerBody>{assist.answer}</AnswerBody>
+              {/* Walkthroughs and launches need a screen to read and a shell to
+                  launch into, so on the web they only ever arrive as text. */}
+              {entry.kind === "text" ? (
+                <>
+                  {entry.answer ? (
+                    <AnswerBody>{entry.answer}</AnswerBody>
+                  ) : (
+                    <p className="text-sm text-muted">thinking…</p>
+                  )}
+                  {!entry.done && entry.answer && (
+                    <span className="mt-1 inline-block h-4 w-1.5 translate-y-0.5 bg-foreground/70" />
+                  )}
+                </>
               ) : (
-                <p className="text-sm text-muted">thinking…</p>
-              )}
-              {!assist.done && assist.answer && (
-                <span className="mt-1 inline-block h-4 w-1.5 translate-y-0.5 bg-foreground/70" />
+                <p className="text-sm">
+                  {entry.kind === "guide" ? entry.result.say : entry.say}
+                  <span className="mt-1 block text-xs text-muted">
+                    Open the desktop app for this one — it needs your screen.
+                  </span>
+                </p>
               )}
             </div>
           ))}
@@ -245,7 +256,7 @@ export function LiveSession() {
               className="flex-1 resize-none rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm outline-none placeholder:text-muted focus:border-foreground/40"
             />
             <button
-              onClick={live.ask}
+              onClick={() => void live.ask()}
               disabled={live.asking}
               className="press flex h-[46px] w-[46px] items-center justify-center rounded-xl bg-foreground text-background disabled:opacity-60"
               aria-label="Ask"

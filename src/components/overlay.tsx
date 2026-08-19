@@ -3,15 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
-  Compass,
   Download,
   Eye,
   EyeOff,
   Loader2,
-  MessageSquare,
   Mic,
   MicOff,
   MousePointerClick,
+  Rocket,
   ScanEye,
   Sparkles,
   Volume2,
@@ -19,26 +18,20 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { useLiveSession } from "@/hooks/use-live-session";
-import { useGuide } from "@/hooks/use-guide";
-import { useAct } from "@/hooks/use-act";
+import { useLiveSession, type Entry } from "@/hooks/use-live-session";
 import { useVoice } from "@/hooks/use-voice";
+import { loadVoicePref, saveVoicePref, stopSpeaking } from "@/lib/speech";
 import { getDesktop, type DesktopBridge, type UpdateState } from "@/lib/desktop";
 import { AnswerBody } from "@/components/answer-body";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
-type Mode = "assist" | "guide" | "act";
-
 export function Overlay() {
-  const live = useLiveSession();
   const [desktop, setDesktop] = useState<DesktopBridge | null>(null);
-  const [mode, setMode] = useState<Mode>("assist");
   const [voiceOn, setVoiceOn] = useState(true);
   const [open, setOpen] = useState(true); // show the panel + instructions on launch
-  const guide = useGuide(voiceOn);
-  const act = useAct(voiceOn);
+  const live = useLiveSession(voiceOn);
   const voice = useVoice();
 
   const [hidden, setHidden] = useState(false);
@@ -46,7 +39,41 @@ export function Overlay() {
 
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Bridge wiring.
+  // The mute preference outlives the session — being talked at when you asked
+  // for quiet, every time you reopen the app, is the whole complaint.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVoiceOn(loadVoicePref());
+  }, []);
+
+  const toggleVoice = useCallback(() => {
+    setVoiceOn((v) => {
+      const next = !v;
+      saveVoicePref(next);
+      if (!next) stopSpeaking(); // silence what is being said right now, too
+      return next;
+    });
+  }, []);
+
+  // `live.ask` is stable; wrapping it here only adds "and open the panel".
+  const liveAsk = live.ask;
+  const ask = useCallback(
+    (text?: string) => {
+      setOpen(true);
+      void liveAsk(text);
+    },
+    [liveAsk],
+  );
+
+  // `voice.toggle` changes identity on every recording state change. The bridge
+  // effect must not re-subscribe when it does: re-running it re-fetches the
+  // update state, which sets state, which renders, which would re-run it again.
+  const voiceRef = useRef(voice);
+  useEffect(() => void (voiceRef.current = voice), [voice]);
+  const askRef = useRef(ask);
+  useEffect(() => void (askRef.current = ask), [ask]);
+
+  // Bridge wiring. Subscribes once, on mount.
   useEffect(() => {
     const bridge = getDesktop();
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -56,17 +83,18 @@ export function Overlay() {
     void bridge.getUpdateState().then(setUpdate);
     const offState = bridge.onState((s) => setHidden(s.contentProtection));
     const offUpdate = bridge.onUpdate(setUpdate);
+    // The push-to-talk hotkey: record, then send whatever was heard. What to do
+    // with it is the dispatcher's problem, not a mode the user has to pre-pick.
     const offVoice = bridge.onVoiceGuide(() => {
-      setMode("guide");
       setOpen(true);
-      voice.toggle((t) => guide.guide(t));
+      voiceRef.current.toggle((t) => askRef.current(t));
     });
     return () => {
       offState();
       offUpdate();
       offVoice();
     };
-  }, [guide, voice]);
+  }, []);
 
   // Auto-resize the window to hug the content (Otto's bar-that-expands).
   useEffect(() => {
@@ -92,27 +120,14 @@ export function Overlay() {
   // unreliable in Electron, so we don't start it — that's what produced the
   // confusing "transcription unavailable" error on launch.
 
-  // Global hotkey (Ctrl+Enter) → assist, and open the panel.
+  // Global hotkey (Ctrl+Enter).
   useEffect(() => {
     if (!desktop) return;
-    return desktop.onAssist(() => {
-      setMode("assist");
-      setOpen(true);
-      void live.ask();
-    });
-  }, [desktop, live]);
+    return desktop.onAssist(() => ask());
+  }, [desktop, ask]);
 
-  const askAssist = useCallback(() => {
-    setOpen(true);
-    void live.ask();
-  }, [live]);
-
-  const hasContent =
-    (mode === "assist" && (live.assists.length > 0 || live.capturing || live.micError)) ||
-    (mode === "guide" && (guide.result != null || guide.working || guide.error != null)) ||
-    (mode === "act" && act.log.length > 0);
-
-  const panelOpen = open || hasContent;
+  const panelOpen =
+    open || live.entries.length > 0 || live.capturing || live.micError != null;
 
   return (
     <div ref={rootRef} className="w-full px-3 pt-3 pb-3" style={{ background: "transparent" }}>
@@ -122,51 +137,34 @@ export function Overlay() {
           <span className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-gradient-to-br from-indigo-400/30 to-fuchsia-400/20 ring-1 ring-white/10">
             <Sparkles className="h-4 w-4" />
           </span>
-          {mode === "assist" && live.sessionId && (
+          {live.sessionId && (
             <span className="hidden items-center gap-1.5 text-xs text-muted sm:flex">
-              <span className={`h-1.5 w-1.5 rounded-full ${live.listening ? "live-dot bg-red-500" : "bg-muted"}`} />
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${live.listening ? "live-dot bg-red-500" : "bg-muted"}`}
+              />
               {live.listening ? "listening" : "paused"}
             </span>
           )}
         </div>
 
-        {/* Mode segmented control */}
-        <div className="flex items-center gap-0.5 rounded-full bg-white/5 p-0.5" style={noDrag}>
-          <Seg active={mode === "assist"} onClick={() => setMode("assist")} icon={MessageSquare}>
-            Assist
-          </Seg>
-          <Seg active={mode === "guide"} onClick={() => setMode("guide")} icon={Compass}>
-            Guide
-          </Seg>
-          <Seg active={mode === "act"} onClick={() => setMode("act")} icon={Wand2}>
-            Act
-          </Seg>
-        </div>
+        <p className="hidden flex-1 px-3 text-center text-xs text-muted sm:block">
+          Ask, or say what you want done
+        </p>
 
         {/* Actions */}
         <div className="flex items-center gap-1" style={noDrag}>
-          {mode === "assist" && (
-            <button onClick={askAssist} className="cbtn-primary">
-              <span className="hidden sm:inline">Ask</span>
-              <kbd className="kbd-mini">⌘↵</kbd>
-            </button>
-          )}
-          {mode === "guide" && (
-            <button onClick={() => setOpen(true)} className="cbtn-primary">
-              <Compass className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Guide me</span>
-            </button>
-          )}
-          {mode === "act" && (
-            <button onClick={() => setOpen(true)} className="cbtn-primary">
-              <Wand2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Command</span>
-            </button>
-          )}
+          <button onClick={() => ask()} className="cbtn-primary">
+            <span className="hidden sm:inline">Ask</span>
+            <kbd className="kbd-mini">⌘↵</kbd>
+          </button>
 
           <div className="mx-0.5 h-5 w-px bg-white/10" />
 
-          <IconBtn active={voiceOn} onClick={() => setVoiceOn((v) => !v)} title={voiceOn ? "Voice on" : "Muted"}>
+          <IconBtn
+            active={voiceOn}
+            onClick={toggleVoice}
+            title={voiceOn ? "Speaking out loud — click to mute" : "Muted — click to unmute"}
+          >
             {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </IconBtn>
 
@@ -201,51 +199,51 @@ export function Overlay() {
       {/* The expanding panel */}
       {panelOpen && (
         <div className="cpanel rise mt-2 overflow-hidden" style={noDrag}>
-          {mode === "assist" && <AssistPanel live={live} onAsk={askAssist} voice={voice} />}
-          {mode === "guide" && <GuidePanel guide={guide} voice={voice} hasDesktop={Boolean(desktop)} />}
-          {mode === "act" && <ActPanel act={act} voice={voice} hasDesktop={Boolean(desktop)} />}
+          <Thread live={live} voice={voice} onAsk={ask} />
         </div>
       )}
     </div>
   );
 }
 
-// ── Assist panel ─────────────────────────────────────────────────────────────
+// ── The one thread ───────────────────────────────────────────────────────────
 
-function AssistPanel({
+function Thread({
   live,
-  onAsk,
   voice,
+  onAsk,
 }: {
   live: ReturnType<typeof useLiveSession>;
-  onAsk: () => void;
   voice: ReturnType<typeof useVoice>;
+  onAsk: (text?: string) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [live.assists, live.capturing]);
+  }, [live.entries, live.capturing]);
 
   return (
     <>
       <div className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
-        {live.assists.length === 0 && !live.capturing && (
+        {live.entries.length === 0 && !live.capturing && (
           <div className="px-2 py-5 text-center">
             <p className="text-sm text-foreground">Ask me anything — I can see your screen.</p>
             <p className="mt-1.5 text-xs text-muted">
-              Type below and press Enter, or tap the mic to talk.
+              Answers, step-by-step walkthroughs, or opening an app. Just say which.
             </p>
           </div>
         )}
 
-        {live.assists.map((a, i) => (
-          <div key={i} className="answer-card p-3.5">
-            {a.question && (
-              <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">{a.question}</p>
-            )}
-            {a.answer ? <AnswerBody>{a.answer}</AnswerBody> : <p className="text-[13px] text-muted">thinking…</p>}
-            {!a.done && a.answer && <span className="typing-caret" />}
-          </div>
+        {live.entries.map((entry, i) => (
+          <EntryCard
+            key={i}
+            entry={entry}
+            onNext={() => void live.advanceGuide(i)}
+            onClickStep={() => void live.clickStep(i)}
+            onRunRest={() => void live.runRest(i)}
+            onConfirm={() => live.confirmOpen(i)}
+            onDismiss={() => live.dismiss(i)}
+          />
         ))}
 
         {live.capturing && (
@@ -256,211 +254,191 @@ function AssistPanel({
         <div ref={endRef} />
       </div>
 
+      {live.micError && <p className="notice mx-4 mb-2">{live.micError}</p>}
       {voice.error && <p className="notice mx-4 mb-2">{voice.error}</p>}
       <InputRow
         value={live.question}
         onChange={live.setQuestion}
-        onSubmit={onAsk}
+        onSubmit={() => onAsk()}
         busy={live.asking}
-        placeholder="Ask anything…"
+        placeholder="Ask, or tell me what to do…"
         mic={{
           recording: voice.recording,
           busy: voice.busy,
-          toggle: () => voice.toggle((t) => live.setQuestion(t)),
+          toggle: () => voice.toggle((t) => onAsk(t)),
         }}
       />
     </>
   );
 }
 
-// ── Guide panel ──────────────────────────────────────────────────────────────
-
-function GuidePanel({
-  guide,
-  voice,
-  hasDesktop,
+function EntryCard({
+  entry,
+  onNext,
+  onClickStep,
+  onRunRest,
+  onConfirm,
+  onDismiss,
 }: {
-  guide: ReturnType<typeof useGuide>;
-  voice: ReturnType<typeof useVoice>;
-  hasDesktop: boolean;
+  entry: Entry;
+  onNext: () => void;
+  onClickStep: () => void;
+  onRunRest: () => void;
+  onConfirm: () => void;
+  onDismiss: () => void;
 }) {
-  const [q, setQ] = useState("");
-  const submit = () => {
-    const t = q.trim();
-    if (!t) return;
-    setQ("");
-    void guide.guide(t);
-  };
+  if (entry.kind === "text") {
+    return (
+      <div className="answer-card p-3.5">
+        {entry.question && (
+          <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">{entry.question}</p>
+        )}
+        {entry.answer ? (
+          <AnswerBody>{entry.answer}</AnswerBody>
+        ) : (
+          <p className="text-[13px] text-muted">thinking…</p>
+        )}
+        {!entry.done && entry.answer && <span className="typing-caret" />}
+      </div>
+    );
+  }
 
-  return (
-    <>
-      <div className="max-h-[460px] space-y-3 overflow-y-auto px-4 py-3.5">
-        {!hasDesktop && <p className="notice">Guide mode reads your screen — desktop app only.</p>}
-        {guide.error && <p className="notice">{guide.error}</p>}
-
-        {!guide.result && !guide.working && !guide.error && (
-          <p className="px-1 py-6 text-center text-sm text-muted">
-            Ask how to do something in the app that&rsquo;s open. I&rsquo;ll read your screen and point at
-            the button.
+  if (entry.kind === "guide") {
+    const { result, step } = entry;
+    const busy = entry.working || entry.clicking;
+    return (
+      <div className="answer-card space-y-3 p-3.5">
+        {result.steps.length > 0 && !entry.done && (
+          <p className="text-[11px] font-medium uppercase tracking-widest text-indigo-300">
+            Step {Math.min(step + 1, result.steps.length)} of {result.steps.length}
           </p>
         )}
 
-        {guide.working && (
-          <div className="reading-chip">
-            <ScanEye className="h-3.5 w-3.5" /> Looking at your screen…
-          </div>
+        <p className="text-[13px] leading-relaxed">{result.say}</p>
+
+        {result.point && !entry.done && (
+          <p className="flex items-center gap-1.5 text-xs text-indigo-300">
+            <MousePointerClick className="h-3.5 w-3.5" />
+            {entry.clicking ? "Clicking" : "Pointing at"}{" "}
+            <span className="text-foreground">{result.point.label}</span>
+          </p>
         )}
 
-        {guide.result && (
-          <div className="answer-card space-y-3 p-3.5">
-            {guide.result.steps?.length > 0 && !guide.result.done && (
-              <p className="text-[11px] font-medium uppercase tracking-widest text-indigo-300">
-                Step {Math.min(guide.step + 1, guide.result.steps.length)} of{" "}
-                {guide.result.steps.length}
-              </p>
-            )}
-
-            <p className="text-[13px] leading-relaxed">{guide.result.say}</p>
-
-            {guide.result.point && !guide.result.done && (
-              <p className="flex items-center gap-1.5 text-xs text-indigo-300">
-                <MousePointerClick className="h-3.5 w-3.5" /> Pointing at{" "}
-                <span className="text-foreground">{guide.result.point.label}</span>
-              </p>
-            )}
-
-            {guide.result.steps?.length > 0 && (
-              <ol className="space-y-1.5 text-[13px]">
-                {guide.result.steps.map((s, i) => {
-                  const state = i < guide.step ? "past" : i === guide.step ? "now" : "future";
-                  return (
-                    <li key={i} className="flex gap-2.5 leading-relaxed">
-                      <span
-                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                          state === "now"
-                            ? "bg-indigo-400 text-black"
-                            : state === "past"
-                              ? "bg-emerald-400/20 text-emerald-200"
-                              : "bg-white/10 text-muted"
-                        }`}
-                      >
-                        {state === "past" ? "✓" : i + 1}
-                      </span>
-                      <span className={state === "future" ? "text-muted" : ""}>{s}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-
-            {guide.result.done ? (
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-xs text-emerald-300">
-                  <Wand2 className="h-3.5 w-3.5" /> That&rsquo;s the whole thing.
-                </span>
-                <button onClick={guide.clear} className="text-xs text-muted hover:text-foreground">
-                  Done
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <button onClick={guide.clear} className="text-xs text-muted hover:text-foreground">
-                  Stop
-                </button>
-                {guide.result.steps?.length > 1 && (
-                  <button
-                    onClick={() => void guide.next()}
-                    disabled={guide.working}
-                    className="cbtn-primary"
+        {result.steps.length > 0 && (
+          <ol className="space-y-1.5 text-[13px]">
+            {result.steps.map((s, i) => {
+              const state = i < step ? "past" : i === step ? "now" : "future";
+              return (
+                <li key={i} className="flex gap-2.5 leading-relaxed">
+                  <span
+                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                      state === "now"
+                        ? "bg-indigo-400 text-black"
+                        : state === "past"
+                          ? "bg-emerald-400/20 text-emerald-200"
+                          : "bg-white/10 text-muted"
+                    }`}
                   >
-                    {guide.working ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Next step →"}
-                  </button>
-                )}
-              </div>
-            )}
+                    {state === "past" ? "✓" : i + 1}
+                  </span>
+                  <span className={state === "future" ? "text-muted" : ""}>{s}</span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        {entry.error && <p className="notice">{entry.error}</p>}
+
+        {entry.done ? (
+          <span className="flex items-center gap-1.5 text-xs text-emerald-300">
+            <Wand2 className="h-3.5 w-3.5" /> That&rsquo;s the whole thing.
+          </span>
+        ) : entry.auto ? (
+          // Otto is driving. The only control that matters now is the brake.
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs text-indigo-300">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Working through the steps…
+            </span>
+            <button onClick={onDismiss} className="cbtn-ghost">
+              Stop
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={onDismiss} className="text-xs text-muted hover:text-foreground">
+              Stop
+            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {/* Handing the mouse over is opt-in every time: one step with
+                  "Click it", or the whole remaining plan with "Do the rest". */}
+              {result.point && step < result.steps.length - 1 && (
+                <button onClick={onRunRest} disabled={busy} className="cbtn-ghost">
+                  Do the rest
+                </button>
+              )}
+              {result.steps.length > 1 && (
+                <button onClick={onNext} disabled={busy} className="cbtn-ghost">
+                  {entry.working ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Next →"}
+                </button>
+              )}
+              {result.point && (
+                <button onClick={onClickStep} disabled={busy} className="cbtn-primary">
+                  {entry.clicking ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <>
+                      <MousePointerClick className="h-3.5 w-3.5" /> Click it
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
+    );
+  }
 
-      {voice.error && <p className="notice mx-4 mb-2">{voice.error}</p>}
-      <InputRow
-        value={q}
-        onChange={setQ}
-        onSubmit={submit}
-        busy={guide.working}
-        placeholder={guide.result ? "Ask a follow-up…" : "How do I…?"}
-        mic={{
-          recording: voice.recording,
-          busy: voice.busy,
-          toggle: () => voice.toggle((t) => guide.guide(t)),
-        }}
-      />
-    </>
-  );
-}
-
-// ── Act panel ────────────────────────────────────────────────────────────────
-
-function ActPanel({
-  act,
-  voice,
-  hasDesktop,
-}: {
-  act: ReturnType<typeof useAct>;
-  voice: ReturnType<typeof useVoice>;
-  hasDesktop: boolean;
-}) {
-  const [cmd, setCmd] = useState("");
-  const submit = () => {
-    const t = cmd.trim();
-    if (!t) return;
-    setCmd("");
-    void act.run(t);
-  };
-
+  // A launch.
   return (
-    <>
-      <div className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
-        {!hasDesktop && <p className="notice">Commands run on your computer — desktop app only.</p>}
+    <div className="answer-card p-3.5">
+      {entry.question && (
+        <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">{entry.question}</p>
+      )}
+      {entry.say && <p className="text-[13px] leading-relaxed">{entry.say}</p>}
 
-        {act.log.length === 0 && (
-          <div className="px-1 py-5 text-center text-sm text-muted">
-            <p>Tell me to open something — an app, a website, a search.</p>
-            <p className="mt-1 text-xs text-muted/80">
-              Try: &ldquo;open Spotify&rdquo; · &ldquo;search YouTube for lofi&rdquo; ·
-              &ldquo;open my email&rdquo;
-            </p>
+      {entry.status === "confirm" && (
+        <div className="mt-2.5 flex items-center justify-between gap-2">
+          <span className="truncate text-xs text-muted" title={entry.target ?? ""}>
+            {entry.target}
+          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button onClick={onDismiss} className="text-xs text-muted hover:text-foreground">
+              No
+            </button>
+            <button onClick={onConfirm} className="cbtn-primary">
+              <Rocket className="h-3.5 w-3.5" />
+              Open {entry.label || "it"}
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {act.log.map((e, i) => (
-          <div key={i} className="answer-card p-3.5">
-            <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{e.command}</p>
-            {e.say && <p className="text-[13px] leading-relaxed">{e.say}</p>}
-            {e.done && (
-              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-300">
-                <Wand2 className="h-3.5 w-3.5" /> {e.done}
-              </p>
-            )}
-            {e.error && <p className="mt-1.5 text-xs text-amber-300/90">{e.error}</p>}
-          </div>
-        ))}
-      </div>
-
-      {voice.error && <p className="notice mx-4 mb-2">{voice.error}</p>}
-      <InputRow
-        value={cmd}
-        onChange={setCmd}
-        onSubmit={submit}
-        busy={act.busy}
-        placeholder="Open an app, site, or search…"
-        mic={{
-          recording: voice.recording,
-          busy: voice.busy,
-          toggle: () => voice.toggle((t) => act.run(t)),
-        }}
-      />
-    </>
+      {entry.status === "running" && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Opening…
+        </p>
+      )}
+      {entry.status === "done" && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-300">
+          <Wand2 className="h-3.5 w-3.5" /> {entry.detail}
+        </p>
+      )}
+      {(entry.status === "error" || entry.status === "blocked") && entry.detail && (
+        <p className="mt-1.5 text-xs text-amber-300/90">{entry.detail}</p>
+      )}
+    </div>
   );
 }
 
@@ -525,30 +503,6 @@ function InputRow({
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
       </button>
     </div>
-  );
-}
-
-function Seg({
-  children,
-  active,
-  onClick,
-  icon: Icon,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  icon: React.ComponentType<{ className?: string }>;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`press flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition ${
-        active ? "bg-white/12 text-foreground" : "text-muted hover:text-foreground"
-      }`}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {children}
-    </button>
   );
 }
 

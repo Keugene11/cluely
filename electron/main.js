@@ -14,7 +14,13 @@ const {
 const path = require("node:path");
 const { APP_URL } = require("./config");
 const { initUpdater, installUpdate, getUpdateState } = require("./updater");
-const { openApp } = require("./executor");
+const {
+  openApp,
+  click: clickAt,
+  glideTo: glideExecutor,
+  warmUp: warmUpExecutor,
+  shutdown: shutdownExecutor,
+} = require("./executor");
 // Otto-style: a slim bar floating top-center that expands downward when it
 // has something to show. The renderer reports its height and we resize to fit.
 const OVERLAY_WIDTH = 720;
@@ -22,8 +28,10 @@ const BAR_HEIGHT = 76;
 const MAX_HEIGHT = 660;
 
 let tray = null;
-let quitting = false;
 let cursorWindow = null;
+// Where the guiding cursor is currently pointing, so a click that follows a
+// point does not re-fly a route the cursor has already taken.
+let lastPoint = null;
 
 // Shown while a window can't reach the hosted app, instead of Chromium's error
 // page. Dark to match the overlay; it just tells the user we're retrying.
@@ -125,9 +133,6 @@ function createOverlay() {
   });
 
   // Closing the window quits the whole app — no lingering hidden process.
-  overlay.on("close", () => {
-    quitting = true;
-  });
   overlay.on("closed", () => {
     overlay = null;
     if (process.platform !== "darwin") app.quit();
@@ -138,8 +143,7 @@ function createOverlay() {
 function resizeOverlay(contentHeight) {
   if (!overlay || overlay.isDestroyed()) return;
   const h = Math.max(BAR_HEIGHT, Math.min(Math.round(contentHeight), MAX_HEIGHT));
-  const [x] = overlay.getPosition();
-  const [, y] = overlay.getPosition();
+  const [x, y] = overlay.getPosition();
   overlay.setBounds({ x, y, width: OVERLAY_WIDTH, height: h });
 }
 
@@ -182,24 +186,80 @@ function createCursorWindow() {
   cursorWindow.on("closed", () => {
     cursorWindow = null;
   });
+
+  // Every guide coordinate is a fraction of this window's size, so if the
+  // display changes underneath it — resolution, DPI, docking a laptop — the
+  // window has to follow or the cursor lands somewhere else entirely.
+  screen.on("display-metrics-changed", fitCursorWindow);
+  screen.on("display-added", fitCursorWindow);
+  screen.on("display-removed", fitCursorWindow);
+}
+
+/** Resize the cursor overlay to cover the whole primary display. */
+function fitCursorWindow() {
+  if (!cursorWindow || cursorWindow.isDestroyed()) return;
+  cursorWindow.setBounds(screen.getPrimaryDisplay().bounds);
 }
 
 /** Point the guiding cursor at a normalized (0-1) location on the primary screen. */
 function pointCursor(target) {
-  if (!cursorWindow) return;
+  if (!cursorWindow || cursorWindow.isDestroyed()) return;
   const { width, height } = screen.getPrimaryDisplay().bounds;
+  lastPoint = { x: target?.x ?? 0.5, y: target?.y ?? 0.5 };
   cursorWindow.showInactive();
   cursorWindow.setAlwaysOnTop(true, "screen-saver");
   cursorWindow.webContents.send("cluely:point-to", {
-    x: Math.round((target?.x ?? 0.5) * width),
-    y: Math.round((target?.y ?? 0.5) * height),
+    x: Math.round(lastPoint.x * width),
+    y: Math.round(lastPoint.y * height),
     label: target?.label ?? "",
   });
 }
 
 function clearCursor() {
+  lastPoint = null;
   cursorWindow?.webContents.send("cluely:point-to", null);
   cursorWindow?.hide();
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Press the thing the cursor is pointing at, for real.
+ *
+ * Usually the drawn cursor is already parked on the target — it flew there when
+ * the step was announced — so all that is left is sliding the OS pointer in to
+ * meet it and pressing. Both use the same easing curve, so when a click does
+ * start cold the two arrive together instead of one chasing the other.
+ *
+ * Our own panel is a real window: if the target sits underneath it, the click
+ * would land on us instead. So the overlay goes click-through for the duration
+ * and its own setting is restored afterwards.
+ */
+async function clickTarget(target) {
+  const x = Math.min(1, Math.max(0, Number(target?.x)));
+  const y = Math.min(1, Math.max(0, Number(target?.y)));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Nothing to click.");
+
+  const alreadyThere =
+    lastPoint && Math.abs(lastPoint.x - x) < 0.005 && Math.abs(lastPoint.y - y) < 0.005;
+
+  if (!alreadyThere) {
+    pointCursor({ ...target, x, y });
+    await wait(560); // let the drawn cursor land before the real one starts
+  }
+
+  const overlayLive = overlay && !overlay.isDestroyed();
+  if (overlayLive) overlay.setIgnoreMouseEvents(true, { forward: true });
+  try {
+    // Glide and press are separate calls so the ripple fires with the actual
+    // button-down. Rolled into one, the animation plays while the pointer is
+    // still travelling and you see the flash before the click lands.
+    await glideExecutor(x, y, alreadyThere ? 260 : 160);
+    cursorWindow?.webContents.send("cluely:press");
+    return await clickAt(x, y, "left", 0);
+  } finally {
+    if (overlayLive) overlay.setIgnoreMouseEvents(state.clickThrough, { forward: true });
+  }
 }
 
 /**
@@ -246,10 +306,7 @@ function refreshTrayMenu() {
     {
       label: "Quit Otto",
       accelerator: "CommandOrControl+Shift+Q",
-      click: () => {
-        quitting = true;
-        app.quit();
-      },
+      click: () => app.quit(),
     },
   );
 
@@ -290,7 +347,14 @@ async function captureScreen() {
     const source =
       sources.find((s) => s.display_id === String(primary.id)) || sources[0];
     if (!source || source.thumbnail.isEmpty()) return null;
-    return source.thumbnail.toDataURL(); // data:image/png;base64,...
+
+    // JPEG, not toDataURL()'s PNG. Measured on a 1568x882 capture: PNG took
+    // 44ms to encode into a 468KB data URL, JPEG q80 took 4ms for 122KB — and
+    // that was a near-empty desktop, which is PNG's best case. The payload is
+    // base64'd into a JSON body and uploaded on every ask, so it is pure
+    // round-trip latency. Quality 80 is well above what Claude needs to read
+    // UI text.
+    return `data:image/jpeg;base64,${source.thumbnail.toJPEG(80).toString("base64")}`;
   } catch {
     return null;
   } finally {
@@ -371,10 +435,7 @@ function registerShortcuts() {
   });
 
   // Always-available quit, whatever the panel is showing.
-  globalShortcut.register("CommandOrControl+Shift+Q", () => {
-    quitting = true;
-    app.quit();
-  });
+  globalShortcut.register("CommandOrControl+Shift+Q", () => app.quit());
 
   globalShortcut.register("CommandOrControl+Shift+H", () => {
     const next = setClickThrough(!state.clickThrough);
@@ -408,6 +469,7 @@ app.whenReady().then(() => {
   createCursorWindow();
   createTray();
   registerShortcuts();
+  warmUpExecutor(); // pay the input helper's ~600ms startup now, not on the first click
 
   // Auto-update: push each state change to the tray menu and the overlay UI.
   initUpdater((updateState) => {
@@ -427,7 +489,6 @@ ipcMain.handle("cluely:get-state", () => ({
 }));
 
 ipcMain.handle("cluely:set-content-protection", (_event, enabled) => setContentProtection(enabled));
-ipcMain.handle("cluely:set-click-through", (_event, enabled) => setClickThrough(enabled));
 ipcMain.handle("cluely:hide", () => {
   overlay?.hide();
   state.visible = false;
@@ -443,16 +504,18 @@ ipcMain.handle("cluely:open", async (_event, target) => {
 ipcMain.handle("cluely:capture-screen", () => captureScreen());
 ipcMain.handle("cluely:point", (_event, target) => pointCursor(target));
 ipcMain.handle("cluely:clear-point", () => clearCursor());
+ipcMain.handle("cluely:click", async (_event, target) => {
+  try {
+    return { ok: true, message: await clickTarget(target) };
+  } catch (err) {
+    return { ok: false, message: err?.message ?? "Could not click that." };
+  }
+});
 ipcMain.handle("cluely:get-update-state", () => getUpdateState());
 ipcMain.handle("cluely:install-update", () => installUpdate());
-ipcMain.handle("cluely:quit", () => {
-  quitting = true;
-  app.quit();
-});
+ipcMain.handle("cluely:quit", () => app.quit());
 
-app.on("before-quit", () => {
-  quitting = true;
-});
+app.on("before-quit", shutdownExecutor); // do not leave a stray powershell.exe behind
 app.on("will-quit", () => globalShortcut.unregisterAll());
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

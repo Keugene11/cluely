@@ -45,6 +45,11 @@ export async function POST(req: Request) {
       `The plan is:\n${plan.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
       `They have done the earlier steps. They are now on step ${idx + 1}: "${plan[idx]}".`,
       "Look at the FRESH screenshot and point at the element for this step. If the task now looks complete, set done to true.",
+      // The client keeps the original plan (see `continuing` below), so anything
+      // returned here is thrown away. Every step of a walkthrough was paying to
+      // regenerate it, and those tokens are on the critical path between one
+      // click and the next.
+      'Return "steps" as an empty array — the plan is already on screen and will not be re-read.',
     ].join("\n\n");
   } else {
     instruction = ask

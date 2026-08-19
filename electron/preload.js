@@ -21,11 +21,19 @@ contextBridge.exposeInMainWorld("cluely", {
   // Guiding cursor
   point: (target) => ipcRenderer.invoke("cluely:point", target),
   clearPoint: () => ipcRenderer.invoke("cluely:clear-point"),
+  /** Fly the cursor to a normalized point and actually press it. */
+  click: (target) => ipcRenderer.invoke("cluely:click", target),
   /** For the cursor window: receive where to point (or null to hide). */
   onPointTo: (callback) => {
     const handler = (_event, target) => callback(target);
     ipcRenderer.on("cluely:point-to", handler);
     return () => ipcRenderer.off("cluely:point-to", handler);
+  },
+  /** For the cursor window: play the click animation. */
+  onPress: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("cluely:press", handler);
+    return () => ipcRenderer.off("cluely:press", handler);
   },
   /** Fires when the voice-guide hotkey is pressed. */
   onVoiceGuide: (callback) => {
@@ -35,7 +43,6 @@ contextBridge.exposeInMainWorld("cluely", {
   },
 
   setContentProtection: (enabled) => ipcRenderer.invoke("cluely:set-content-protection", enabled),
-  setClickThrough: (enabled) => ipcRenderer.invoke("cluely:set-click-through", enabled),
   hide: () => ipcRenderer.invoke("cluely:hide"),
   quit: () => ipcRenderer.invoke("cluely:quit"),
 

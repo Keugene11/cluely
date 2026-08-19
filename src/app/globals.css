@@ -230,6 +230,25 @@ body:has(.guide-cursor-root) {
   transition: transform 120ms ease, opacity 120ms ease;
 }
 .cbtn-primary:active { transform: scale(0.97); }
+.cbtn-primary:disabled { opacity: 0.6; }
+
+.cbtn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(245, 245, 245, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  transition: transform 120ms ease, color 120ms ease, background 120ms ease;
+}
+.cbtn-ghost:hover { color: #f5f5f5; background: rgba(255, 255, 255, 0.09); }
+.cbtn-ghost:active { transform: scale(0.97); }
+.cbtn-ghost:disabled { opacity: 0.5; }
 
 .kbd-mini {
   font-family: inherit;
@@ -276,43 +295,114 @@ body:has(.guide-cursor-root) {
   animation: pulse-dot 1s ease-in-out infinite;
 }
 
-/* ── Guiding cursor visuals (blue triangle, Clicky-style) ─────────────────── */
-.cursor-tri {
-  filter: drop-shadow(0 0 10px rgba(70, 110, 255, 0.85)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+
+/* ── Guiding cursor visuals ───────────────────────────────────────────────── */
+/* Position and lean are written per frame from JS; everything here is the look
+   and the state transitions (landed / pressed), so nothing fights the rAF loop. */
+
+.cursor-arm {
+  transform-origin: 5px 3px; /* the arrow's tip — it leans around the point it indicates */
+  will-change: transform;
 }
+.cursor-arrow {
+  display: block;
+  filter:
+    drop-shadow(0 0 9px rgba(80, 118, 255, 0.75))
+    drop-shadow(0 2px 5px rgba(0, 0, 0, 0.55));
+}
+.cursor-trail {
+  filter: blur(3px);
+  transition: opacity 140ms linear;
+}
+
+/* Caption rides with the cursor but only shows once it has landed, so there is
+   no text smearing across the screen mid-flight. */
 .cursor-caption {
   position: absolute;
-  left: 26px;
-  top: 22px;
+  left: 24px;
+  top: 24px;
   white-space: nowrap;
-  border-radius: 9px;
-  padding: 5px 10px;
+  border-radius: 10px;
+  padding: 5px 11px;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: #fff;
-  background: rgba(20, 22, 40, 0.9);
-  border: 1px solid rgba(120, 140, 255, 0.4);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 14px rgba(70, 110, 255, 0.3);
-  backdrop-filter: blur(8px);
-  animation: cursor-caption-in 320ms ease both;
+  background: rgba(18, 20, 38, 0.92);
+  border: 1px solid rgba(120, 140, 255, 0.42);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.55),
+    0 0 16px rgba(70, 110, 255, 0.28);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: translateY(6px) scale(0.94);
+  transform-origin: 0 0;
+  transition:
+    opacity 200ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-@keyframes cursor-caption-in {
-  from { opacity: 0; transform: translateY(5px) scale(0.96); }
-  to { opacity: 1; transform: none; }
+.cursor-caption.is-on {
+  opacity: 1;
+  transform: none;
 }
-@keyframes cursor-ring-pulse {
-  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0.95; }
-  100% { transform: translate(-50%, -50%) scale(1.9); opacity: 0; }
+
+/* The halo waits at the destination and fades up as the cursor settles onto it. */
+.cursor-halo {
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+.cursor-halo.is-on {
+  opacity: 1;
+}
+.cursor-ring,
+.cursor-dot,
+.cursor-ripple {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  pointer-events: none;
 }
 .cursor-ring {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  border: 3px solid rgba(90, 130, 255, 0.9);
-  box-shadow: 0 0 22px rgba(80, 120, 255, 0.6);
-  animation: cursor-ring-pulse 1.5s ease-out infinite;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border: 2.5px solid rgba(110, 145, 255, 0.85);
+  box-shadow: 0 0 20px rgba(80, 120, 255, 0.5);
+  animation: cursor-ring-pulse 2.1s cubic-bezier(0.16, 0.8, 0.35, 1) infinite;
 }
-.cursor-ring-2 { animation-delay: 0.75s; }
+.cursor-ring-2 {
+  animation-delay: 1.05s;
+}
+.cursor-dot {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  background: rgba(150, 175, 255, 0.55);
+  box-shadow: 0 0 14px rgba(90, 130, 255, 0.8);
+  animation: cursor-dot-breathe 2.1s ease-in-out infinite;
+}
+@keyframes cursor-ring-pulse {
+  0% { transform: scale(0.45); opacity: 0; }
+  18% { opacity: 0.9; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+@keyframes cursor-dot-breathe {
+  0%, 100% { transform: scale(0.85); opacity: 0.5; }
+  50% { transform: scale(1.15); opacity: 0.9; }
+}
+
+/* Fired on a real click: a hard, fast shockwave, distinct from the idle pulse
+   so you can tell "it clicked" from "it is pointing". */
+.cursor-ripple {
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 3px solid rgba(190, 210, 255, 0.95);
+  box-shadow: 0 0 26px rgba(120, 160, 255, 0.9);
+  animation: cursor-ripple-out 620ms cubic-bezier(0.12, 0.7, 0.2, 1) forwards;
+}
+@keyframes cursor-ripple-out {
+  0% { transform: scale(0.3); opacity: 1; border-width: 4px; }
+  100% { transform: scale(2.6); opacity: 0; border-width: 1px; }
+}
