@@ -12,6 +12,22 @@ contextBridge.exposeInMainWorld("cluely", {
   /** Screenshot of the primary display as a PNG data URL, or null. */
   captureScreen: () => ipcRenderer.invoke("cluely:capture-screen"),
 
+  // Guiding cursor
+  point: (target) => ipcRenderer.invoke("cluely:point", target),
+  clearPoint: () => ipcRenderer.invoke("cluely:clear-point"),
+  /** For the cursor window: receive where to point (or null to hide). */
+  onPointTo: (callback) => {
+    const handler = (_event, target) => callback(target);
+    ipcRenderer.on("cluely:point-to", handler);
+    return () => ipcRenderer.off("cluely:point-to", handler);
+  },
+  /** Fires when the voice-guide hotkey is pressed. */
+  onVoiceGuide: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("cluely:voice-guide", handler);
+    return () => ipcRenderer.off("cluely:voice-guide", handler);
+  },
+
   setContentProtection: (enabled) => ipcRenderer.invoke("cluely:set-content-protection", enabled),
   setClickThrough: (enabled) => ipcRenderer.invoke("cluely:set-click-through", enabled),
   hide: () => ipcRenderer.invoke("cluely:hide"),

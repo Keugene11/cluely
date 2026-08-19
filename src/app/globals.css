@@ -178,3 +178,42 @@ body:has(.overlay-root) {
   padding: 0;
   white-space: pre;
 }
+
+/* ── Guiding cursor (full-screen transparent overlay) ─────────────────────── */
+body:has(.guide-cursor-root) {
+  background: transparent;
+}
+.guide-cursor-root {
+  height: 100vh;
+}
+
+@keyframes guide-ring-pulse {
+  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+}
+.guide-ring {
+  border: 3px solid rgba(130, 120, 255, 0.9);
+  box-shadow: 0 0 24px rgba(130, 120, 255, 0.6);
+  animation: guide-ring-pulse 1.5s ease-out infinite;
+}
+.guide-ring-2 {
+  border: 3px solid rgba(130, 120, 255, 0.7);
+  animation: guide-ring-pulse 1.5s ease-out infinite;
+  animation-delay: 0.75s;
+}
+
+@keyframes guide-pointer-bob {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(3px, 3px); }
+}
+.guide-pointer {
+  animation: guide-pointer-bob 1.1s ease-in-out infinite;
+}
+
+@keyframes guide-caption-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.guide-caption {
+  animation: guide-caption-in 300ms ease both;
+}

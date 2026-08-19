@@ -16,6 +16,12 @@ export type DesktopBridge = {
   isDesktop: true;
   getState: () => Promise<DesktopState>;
   captureScreen: () => Promise<string | null>;
+  point: (target: { x: number; y: number; label: string }) => Promise<void>;
+  clearPoint: () => Promise<void>;
+  onPointTo: (
+    callback: (target: { x: number; y: number; label: string } | null) => void,
+  ) => () => void;
+  onVoiceGuide: (callback: () => void) => () => void;
   setContentProtection: (enabled: boolean) => Promise<boolean>;
   setClickThrough: (enabled: boolean) => Promise<boolean>;
   hide: () => Promise<void>;

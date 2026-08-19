@@ -18,6 +18,7 @@ const OVERLAY_SIZE = { width: 440, height: 620 };
 
 let tray = null;
 let quitting = false;
+let cursorWindow = null;
 
 /** Runtime state the renderer can read and toggle. */
 const state = {
@@ -77,6 +78,65 @@ function createOverlay() {
     overlay = null;
     if (process.platform !== "darwin") app.quit();
   });
+}
+
+/**
+ * A full-screen, click-through overlay that draws the guiding cursor. It floats
+ * above everything and lets every click pass through to the real app beneath, so
+ * the user can actually press the button it points at.
+ */
+function createCursorWindow() {
+  const display = screen.getPrimaryDisplay();
+  const { x, y, width, height } = display.bounds;
+
+  cursorWindow = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    skipTaskbar: true,
+    focusable: false,
+    fullscreenable: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  cursorWindow.setAlwaysOnTop(true, "screen-saver");
+  cursorWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  cursorWindow.setIgnoreMouseEvents(true, { forward: true }); // clicks pass through
+  cursorWindow.loadURL(`${APP_URL}/guide-cursor`);
+
+  cursorWindow.on("closed", () => {
+    cursorWindow = null;
+  });
+}
+
+/** Point the guiding cursor at a normalized (0-1) location on the primary screen. */
+function pointCursor(target) {
+  if (!cursorWindow) return;
+  const { width, height } = screen.getPrimaryDisplay().bounds;
+  cursorWindow.showInactive();
+  cursorWindow.setAlwaysOnTop(true, "screen-saver");
+  cursorWindow.webContents.send("cluely:point-to", {
+    x: Math.round((target?.x ?? 0.5) * width),
+    y: Math.round((target?.y ?? 0.5) * height),
+    label: target?.label ?? "",
+  });
+}
+
+function clearCursor() {
+  cursorWindow?.webContents.send("cluely:point-to", null);
+  cursorWindow?.hide();
 }
 
 /**
@@ -237,6 +297,13 @@ function registerShortcuts() {
 
   globalShortcut.register("CommandOrControl+Shift+Space", toggleVisible);
 
+  // Ask by voice: start listening for a spoken question, then guide with the cursor.
+  globalShortcut.register("CommandOrControl+Shift+G", () => {
+    if (!overlay) return;
+    if (!overlay.isVisible()) toggleVisible();
+    overlay.webContents.send("cluely:voice-guide");
+  });
+
   // Always-available quit, whatever the panel is showing.
   globalShortcut.register("CommandOrControl+Shift+Q", () => {
     quitting = true;
@@ -272,6 +339,7 @@ function grantMediaPermissions() {
 app.whenReady().then(() => {
   grantMediaPermissions();
   createOverlay();
+  createCursorWindow();
   createTray();
   registerShortcuts();
 
@@ -299,6 +367,8 @@ ipcMain.handle("cluely:hide", () => {
   state.visible = false;
 });
 ipcMain.handle("cluely:capture-screen", () => captureScreen());
+ipcMain.handle("cluely:point", (_event, target) => pointCursor(target));
+ipcMain.handle("cluely:clear-point", () => clearCursor());
 ipcMain.handle("cluely:get-update-state", () => getUpdateState());
 ipcMain.handle("cluely:install-update", () => installUpdate());
 ipcMain.handle("cluely:quit", () => {
