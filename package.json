@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:push": "tsx --env-file=.env.local scripts/db-push.ts"
+    "db:push": "tsx --env-file=.env.local scripts/db-push.ts",
+    "desktop": "concurrently -k -n next,electron -c blue,magenta \"next dev\" \"wait-on http://localhost:3000/overlay && electron .\"",
+    "desktop:only": "electron ."
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
@@ -25,12 +27,16 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
     "dotenv": "^17.4.2",
+    "electron": "^43.4.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^9.1.0"
   },
-  "packageManager": "pnpm@10.29.3"
+  "packageManager": "pnpm@10.29.3",
+  "main": "electron/main.js"
 }

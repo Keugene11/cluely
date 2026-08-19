@@ -1,0 +1,29 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+/**
+ * The bridge the overlay renderer talks to. Everything the desktop shell can do
+ * is listed here — the renderer has no direct Node or Electron access.
+ */
+contextBridge.exposeInMainWorld("cluely", {
+  isDesktop: true,
+
+  getState: () => ipcRenderer.invoke("cluely:get-state"),
+  setContentProtection: (enabled) => ipcRenderer.invoke("cluely:set-content-protection", enabled),
+  setClickThrough: (enabled) => ipcRenderer.invoke("cluely:set-click-through", enabled),
+  hide: () => ipcRenderer.invoke("cluely:hide"),
+  quit: () => ipcRenderer.invoke("cluely:quit"),
+
+  /** Fires when the global Ctrl/Cmd+Enter hotkey is pressed, app focused or not. */
+  onAssist: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("cluely:assist", handler);
+    return () => ipcRenderer.off("cluely:assist", handler);
+  },
+
+  /** Fires when the main process changes state behind the renderer's back. */
+  onState: (callback) => {
+    const handler = (_event, next) => callback(next);
+    ipcRenderer.on("cluely:state", handler);
+    return () => ipcRenderer.off("cluely:state", handler);
+  },
+});

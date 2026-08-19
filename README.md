@@ -19,12 +19,37 @@ Built with Next.js (App Router), Neon Postgres, and Claude.
 - **Context files** — paste or upload text the assistant reads before answering. The five
   most recent are included in every live assist; Starter plans are capped at three.
 
-## Not included
+## Desktop overlay
 
-The real product's headline feature is a native desktop overlay that hides itself from
-screen-share and recording. That is a native GPU-layer trick, and building software to evade
-meeting recording or exam proctoring is out of scope here. This clone runs in the browser,
-in plain sight, and everything it captures is visible on screen.
+`pnpm desktop` runs the same app inside an Electron shell as a frameless, always-on-top
+panel that floats over your other windows (even full-screen ones). The web `/app` and the
+overlay share one hook (`src/hooks/use-live-session.ts`); the overlay is just a compact view
+with the desktop-only extras:
+
+- **Global `Ctrl`/`Cmd`+`Enter`** — the assist hotkey fires app-focused or not.
+- **Drag anywhere, click-through** — grab the header to move it; `Ctrl+Shift+H` lets clicks
+  pass through to whatever is underneath.
+- **No bot in the meeting** — it transcribes locally through the mic and never joins the
+  call as a participant, so nothing shows up in the roster.
+- **Hide from screen capture** — the eye toggle calls `win.setContentProtection(true)`,
+  which is `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` on Windows and
+  `NSWindow.sharingType = .none` on macOS. It is **off by default**, and it is not a
+  security boundary: a phone pointed at the screen still sees everything, and on current
+  macOS apps that capture via ScreenCaptureKit (Zoom, Teams) see the window anyway — the
+  overlay says so when you turn it on there.
+
+Shortcuts: `Ctrl/Cmd+Enter` assist · `Ctrl/Cmd+Shift+Space` show/hide · `Ctrl/Cmd+Shift+H`
+click-through · `Ctrl/Cmd+Shift+Arrows` nudge the panel.
+
+## Not built on purpose
+
+The real product sells a "Pro + Undetectability" tier aimed at staying hidden from
+**proctoring and integrity software** — process-name obfuscation, hiding from process
+enumeration, dodging detection tools. That is not in here. It exists only to defeat exam
+and interview monitoring, and it does not even work the way the marketing implies: detection
+happens out-of-band (process lists, virtual-audio devices, network calls), not through the
+screen, so hiding pixels does nothing against it. The screen-capture exclusion above is the
+same API password managers use and stops there.
 
 ## Setup
 
@@ -32,7 +57,9 @@ in plain sight, and everything it captures is visible on screen.
 pnpm install
 cp .env.example .env.local   # fill in the three values
 pnpm db:push                 # apply src/db/schema.sql to Neon
-pnpm dev
+
+pnpm dev                     # web app at http://localhost:3000
+pnpm desktop                 # or the Electron overlay (starts Next automatically)
 ```
 
 | Variable            | What it is                                                    |
@@ -47,13 +74,17 @@ browsers can still run a session and type questions.
 ## Layout
 
 ```
+electron/
+  main.js                 window, global shortcuts, content protection, IPC
+  preload.js              the `window.cluely` bridge exposed to the overlay
 src/
   app/
     page.tsx              landing
     login, signup         auth screens
-    app/                  the product
+    overlay/              the surface the Electron window loads
+    app/                  the web product
       page.tsx            session history
-      live/               live session + assist overlay
+      live/               live session + assist panel
       s/[id]/             transcript, assists, generated notes
       context/            context file manager
     api/
@@ -61,10 +92,15 @@ src/
       sessions/           CRUD, transcript append, notes generation
       assist/             streaming hotkey answers
       context/            context files
+  hooks/
+    use-live-session.ts   shared session logic (web + overlay)
+  components/
+    overlay.tsx           the desktop panel view
   lib/
     db.ts                 Neon client and row types
     auth.ts               password hashing, JWT cookie, getUser/requireUser
     claude.ts             Anthropic client and the two system prompts
+    desktop.ts            typed access to the preload bridge
   db/schema.sql           tables, applied by `pnpm db:push`
 ```
 

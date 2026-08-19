@@ -106,3 +106,11 @@ kbd {
 .live-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
+
+/* The desktop overlay window is transparent — let its rounded card show through. */
+body:has(.overlay-root) {
+  background: transparent;
+}
+.overlay-root {
+  height: 100vh;
+}
