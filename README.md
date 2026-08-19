@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cluely
 
-## Getting Started
+A working clone of the Cluely product — a real-time meeting copilot. It listens to a
+conversation, hands you an answer on a hotkey, and writes the notes once the call ends.
 
-First, run the development server:
+Built with Next.js (App Router), Neon Postgres, and Claude.
+
+## What it does
+
+- **Landing page** — hero, how-it-works, features, and pricing tiers.
+- **Accounts** — email + password, bcrypt hashes, JWT in an httpOnly cookie.
+- **Live sessions** — browser speech recognition transcribes the call in real time and
+  streams lines into Neon in batches.
+- **Hotkey assist** — `Ctrl` / `Cmd` + `Enter` sends the recent transcript plus your
+  uploaded context to Claude and streams a short, speakable answer into the overlay panel.
+  Every assist is stored against the session.
+- **Meeting notes** — ending a session generates a summary, key points, action items with
+  owners, and a follow-up email draft, stored as JSONB.
+- **Context files** — paste or upload text the assistant reads before answering. The five
+  most recent are included in every live assist; Starter plans are capped at three.
+
+## Not included
+
+The real product's headline feature is a native desktop overlay that hides itself from
+screen-share and recording. That is a native GPU-layer trick, and building software to evade
+meeting recording or exam proctoring is out of scope here. This clone runs in the browser,
+in plain sight, and everything it captures is visible on screen.
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local   # fill in the three values
+pnpm db:push                 # apply src/db/schema.sql to Neon
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Variable            | What it is                                                    |
+| ------------------- | ------------------------------------------------------------- |
+| `DATABASE_URL`      | Neon Postgres connection string (use the pooled host)          |
+| `ANTHROPIC_API_KEY` | Powers live assists and meeting notes                          |
+| `AUTH_SECRET`       | Signs the session cookie — any long random string              |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Speech recognition uses the Web Speech API, so transcription needs Chrome or Edge. Other
+browsers can still run a session and type questions.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Layout
 
-## Learn More
+```
+src/
+  app/
+    page.tsx              landing
+    login, signup         auth screens
+    app/                  the product
+      page.tsx            session history
+      live/               live session + assist overlay
+      s/[id]/             transcript, assists, generated notes
+      context/            context file manager
+    api/
+      auth/               signup, login, logout
+      sessions/           CRUD, transcript append, notes generation
+      assist/             streaming hotkey answers
+      context/            context files
+  lib/
+    db.ts                 Neon client and row types
+    auth.ts               password hashing, JWT cookie, getUser/requireUser
+    claude.ts             Anthropic client and the two system prompts
+  db/schema.sql           tables, applied by `pnpm db:push`
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Notes on the implementation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Transcript lines are buffered client-side and flushed every five seconds, so a busy call
+  is a handful of writes rather than one per phrase.
+- Live assists run at `effort: "low"` with a 1024-token ceiling — the panel is meant to be
+  read at a glance mid-sentence.
+- Notes generation uses adaptive thinking and returns strict JSON that is stored on the
+  session row.
+- Browsers cut the speech stream about once a minute; the recognizer restarts itself for as
+  long as the session is listening.
