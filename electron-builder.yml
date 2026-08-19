@@ -1,0 +1,39 @@
+appId: com.cluely.desktop
+productName: Cluely
+copyright: Cluely study build
+
+directories:
+  output: dist-desktop
+  buildResources: build
+
+# The desktop app is a thin shell that loads the hosted web app, so it only
+# needs the electron sources and its runtime deps — not the Next build.
+files:
+  - electron/**/*
+  - package.json
+
+# Trim the packaged node_modules to just what main.js requires at runtime.
+# (Everything else — Next, React, the SDK — runs server-side on Vercel.)
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.png
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Cluely
+
+# macOS block kept for reference; building a mac target needs a Mac.
+mac:
+  target:
+    - dmg
+  icon: build/icon.png
+  category: public.app-category.productivity

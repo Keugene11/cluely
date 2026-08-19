@@ -1,7 +1,6 @@
 const { app, BrowserWindow, globalShortcut, ipcMain, screen, session, shell } = require("electron");
 const path = require("node:path");
-
-const APP_URL = process.env.CLUELY_URL || "http://localhost:3000";
+const { APP_URL } = require("./config");
 const OVERLAY_SIZE = { width: 440, height: 620 };
 
 /** Runtime state the renderer can read and toggle. */

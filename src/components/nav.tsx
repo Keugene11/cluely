@@ -14,9 +14,10 @@ export async function Nav() {
         </Link>
 
         <nav className="hidden items-center gap-7 text-sm text-muted md:flex">
-          <a href="#how" className="press hover:text-foreground">How it works</a>
-          <a href="#features" className="press hover:text-foreground">Features</a>
-          <a href="#pricing" className="press hover:text-foreground">Pricing</a>
+          <Link href="/#how" className="press hover:text-foreground">How it works</Link>
+          <Link href="/#features" className="press hover:text-foreground">Features</Link>
+          <Link href="/#pricing" className="press hover:text-foreground">Pricing</Link>
+          <Link href="/download" className="press hover:text-foreground">Download</Link>
         </nav>
 
         <div className="flex items-center gap-2">

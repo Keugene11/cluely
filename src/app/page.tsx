@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Download,
   Check,
   FileText,
   Keyboard,
@@ -153,12 +154,13 @@ export default function Home() {
                 >
                   Start free <ArrowRight className="h-4 w-4" />
                 </Link>
-                <a
-                  href="#how"
+                <Link
+                  href="/download"
                   className="press inline-flex items-center gap-2 rounded-full border border-line bg-surface/60 px-6 py-3 font-medium backdrop-blur hover:bg-surface-2"
                 >
-                  See how it works
-                </a>
+                  <Download className="h-4 w-4" />
+                  Download for Windows
+                </Link>
               </div>
 
               <p className="mt-4 text-xs text-muted">

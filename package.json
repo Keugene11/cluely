@@ -9,7 +9,10 @@
     "lint": "eslint",
     "db:push": "tsx --env-file=.env.local scripts/db-push.ts",
     "desktop": "concurrently -k -n next,electron -c blue,magenta \"next dev\" \"wait-on http://localhost:3000/overlay && electron .\"",
-    "desktop:only": "electron ."
+    "desktop:only": "electron .",
+    "icon": "node scripts/make-icon.js",
+    "dist": "node scripts/make-icon.js && electron-builder --win",
+    "dist:dir": "node scripts/make-icon.js && electron-builder --win --dir"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
@@ -30,6 +33,7 @@
     "concurrently": "^10.0.5",
     "dotenv": "^17.4.2",
     "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",
@@ -38,5 +42,9 @@
     "wait-on": "^9.1.0"
   },
   "packageManager": "pnpm@10.29.3",
-  "main": "electron/main.js"
+  "main": "electron/main.js",
+  "description": "Real-time AI meeting copilot — listens, answers on a hotkey, writes the notes.",
+  "author": {
+    "name": "Cluely"
+  }
 }
