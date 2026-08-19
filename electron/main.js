@@ -14,7 +14,8 @@ const {
 const path = require("node:path");
 const { APP_URL } = require("./config");
 const { initUpdater, installUpdate, getUpdateState } = require("./updater");
-// Cluely-style: a slim bar floating top-center that expands downward when it
+const { openApp } = require("./executor");
+// Otto-style: a slim bar floating top-center that expands downward when it
 // has something to show. The renderer reports its height and we resize to fit.
 const OVERLAY_WIDTH = 720;
 const BAR_HEIGHT = 76;
@@ -39,7 +40,7 @@ const RECONNECTING_HTML =
     h1{font-size:15px;color:#f5f5f5;margin:12px 0 6px;font-weight:600}
     p{font-size:12px;margin:0}
   </style></head><body><div class="box"><span class="dot"></span>
-    <h1>Reconnecting to Cluely…</h1><p>Check your internet — this retries on its own.</p>
+    <h1>Reconnecting to Otto…</h1><p>Check your internet — this retries on its own.</p>
   </div></body></html>`);
 
 /**
@@ -211,7 +212,7 @@ function createTray() {
     .resize({ width: 16, height: 16 });
 
   tray = new Tray(icon);
-  tray.setToolTip("Cluely");
+  tray.setToolTip("Otto");
   refreshTrayMenu();
 
   // Left-click toggles the panel; on Windows a single click is most expected.
@@ -243,7 +244,7 @@ function refreshTrayMenu() {
   items.push(
     { type: "separator" },
     {
-      label: "Quit Cluely",
+      label: "Quit Otto",
       accelerator: "CommandOrControl+Shift+Q",
       click: () => {
         quitting = true;
@@ -432,6 +433,13 @@ ipcMain.handle("cluely:hide", () => {
   state.visible = false;
 });
 ipcMain.handle("cluely:resize", (_event, height) => resizeOverlay(height));
+ipcMain.handle("cluely:open", async (_event, target) => {
+  try {
+    return { ok: true, message: await openApp(target) };
+  } catch (err) {
+    return { ok: false, message: err?.message ?? "Could not open that." };
+  }
+});
 ipcMain.handle("cluely:capture-screen", () => captureScreen());
 ipcMain.handle("cluely:point", (_event, target) => pointCursor(target));
 ipcMain.handle("cluely:clear-point", () => clearCursor());

@@ -11,7 +11,7 @@ import { Nav } from "@/components/nav";
 
 // The installer lives on the repo's latest GitHub Release under a stable name.
 const DOWNLOAD_URL =
-  "https://github.com/Keugene11/cluely/releases/latest/download/Cluely-Setup.exe";
+  "https://github.com/Keugene11/cluely/releases/latest/download/Otto-Setup.exe";
 const RELEASES_URL = "https://github.com/Keugene11/cluely/releases";
 
 const steps = [
@@ -54,7 +54,7 @@ export default function DownloadPage() {
               </div>
 
               <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
-                Put Cluely on your desktop
+                Put Otto on your desktop
               </h1>
               <p className="mt-5 max-w-xl text-lg text-muted">
                 The desktop app is a small panel that floats over your calls, answers on a global
@@ -166,7 +166,7 @@ export default function DownloadPage() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-10 text-sm text-muted sm:flex-row">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
-            <span>Cluely</span>
+            <span>Otto</span>
           </div>
           <p>A study build. Use it where everyone in the room knows it is on.</p>
         </div>

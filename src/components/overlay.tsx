@@ -16,17 +16,19 @@ import {
   Sparkles,
   Volume2,
   VolumeX,
+  Wand2,
   X,
 } from "lucide-react";
 import { useLiveSession } from "@/hooks/use-live-session";
 import { useGuide } from "@/hooks/use-guide";
+import { useAct } from "@/hooks/use-act";
 import { getDesktop, type DesktopBridge, type UpdateState } from "@/lib/desktop";
 import { AnswerBody } from "@/components/answer-body";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
-type Mode = "assist" | "guide";
+type Mode = "assist" | "guide" | "act";
 
 export function Overlay() {
   const live = useLiveSession();
@@ -35,6 +37,7 @@ export function Overlay() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [open, setOpen] = useState(false);
   const guide = useGuide(voiceOn);
+  const act = useAct(voiceOn);
 
   const [hidden, setHidden] = useState(false);
   const [clickThrough, setClickThrough] = useState(false);
@@ -71,7 +74,7 @@ export function Overlay() {
     };
   }, [guide]);
 
-  // Auto-resize the window to hug the content (Cluely's bar-that-expands).
+  // Auto-resize the window to hug the content (Otto's bar-that-expands).
   useEffect(() => {
     const el = rootRef.current;
     const bridge = getDesktop();
@@ -116,7 +119,8 @@ export function Overlay() {
 
   const hasContent =
     (mode === "assist" && (live.assists.length > 0 || live.capturing || live.micError)) ||
-    (mode === "guide" && (guide.result != null || guide.working || guide.error != null));
+    (mode === "guide" && (guide.result != null || guide.working || guide.error != null)) ||
+    (mode === "act" && act.log.length > 0);
 
   const panelOpen = open || hasContent;
 
@@ -144,19 +148,29 @@ export function Overlay() {
           <Seg active={mode === "guide"} onClick={() => setMode("guide")} icon={Compass}>
             Guide
           </Seg>
+          <Seg active={mode === "act"} onClick={() => setMode("act")} icon={Wand2}>
+            Act
+          </Seg>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-1" style={noDrag}>
-          {mode === "assist" ? (
+          {mode === "assist" && (
             <button onClick={askAssist} className="cbtn-primary">
               <span className="hidden sm:inline">Ask</span>
               <kbd className="kbd-mini">⌘↵</kbd>
             </button>
-          ) : (
+          )}
+          {mode === "guide" && (
             <button onClick={() => setOpen(true)} className="cbtn-primary">
               <Compass className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Guide me</span>
+            </button>
+          )}
+          {mode === "act" && (
+            <button onClick={() => setOpen(true)} className="cbtn-primary">
+              <Wand2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Command</span>
             </button>
           )}
 
@@ -206,11 +220,9 @@ export function Overlay() {
       {/* The expanding panel */}
       {panelOpen && (
         <div className="cpanel rise mt-2 overflow-hidden" style={noDrag}>
-          {mode === "assist" ? (
-            <AssistPanel live={live} onAsk={askAssist} hasDesktop={Boolean(desktop)} />
-          ) : (
-            <GuidePanel guide={guide} hasDesktop={Boolean(desktop)} />
-          )}
+          {mode === "assist" && <AssistPanel live={live} onAsk={askAssist} hasDesktop={Boolean(desktop)} />}
+          {mode === "guide" && <GuidePanel guide={guide} hasDesktop={Boolean(desktop)} />}
+          {mode === "act" && <ActPanel act={act} hasDesktop={Boolean(desktop)} />}
         </div>
       )}
     </div>
@@ -345,6 +357,57 @@ function GuidePanel({
         busy={guide.working}
         placeholder="How do I…?"
         mic={{ listening: guide.listening, toggle: guide.listening ? guide.stopListening : guide.listen }}
+      />
+    </>
+  );
+}
+
+// ── Act panel ────────────────────────────────────────────────────────────────
+
+function ActPanel({ act, hasDesktop }: { act: ReturnType<typeof useAct>; hasDesktop: boolean }) {
+  const [cmd, setCmd] = useState("");
+  const submit = () => {
+    const t = cmd.trim();
+    if (!t) return;
+    setCmd("");
+    void act.run(t);
+  };
+
+  return (
+    <>
+      <div className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
+        {!hasDesktop && <p className="notice">Commands run on your computer — desktop app only.</p>}
+
+        {act.log.length === 0 && (
+          <div className="px-1 py-5 text-center text-sm text-muted">
+            <p>Tell me to open something — an app, a website, a search.</p>
+            <p className="mt-1 text-xs text-muted/80">
+              Try: &ldquo;open Spotify&rdquo; · &ldquo;search YouTube for lofi&rdquo; ·
+              &ldquo;open my email&rdquo;
+            </p>
+          </div>
+        )}
+
+        {act.log.map((e, i) => (
+          <div key={i} className="answer-card p-3.5">
+            <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{e.command}</p>
+            {e.say && <p className="text-[13px] leading-relaxed">{e.say}</p>}
+            {e.done && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-300">
+                <Wand2 className="h-3.5 w-3.5" /> {e.done}
+              </p>
+            )}
+            {e.error && <p className="mt-1.5 text-xs text-amber-300/90">{e.error}</p>}
+          </div>
+        ))}
+      </div>
+
+      <InputRow
+        value={cmd}
+        onChange={setCmd}
+        onSubmit={submit}
+        busy={act.busy}
+        placeholder="Open an app, site, or search…"
       />
     </>
   );

@@ -8,9 +8,9 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Cluely — real-time AI for every conversation",
+  title: "Otto — real-time AI for every conversation",
   description:
-    "Cluely listens to your meetings, answers on a hotkey, and writes the notes afterwards.",
+    "Otto listens to your meetings, answers on a hotkey, and writes the notes afterwards.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

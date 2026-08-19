@@ -41,7 +41,7 @@ export function OverlayLogin() {
           <span className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-gradient-to-br from-indigo-400/30 to-fuchsia-400/20 ring-1 ring-white/10">
             <Sparkles className="h-4 w-4" />
           </span>
-          Cluely
+          Otto
         </span>
         <button
           onClick={() => getDesktop()?.quit()}

@@ -10,7 +10,7 @@ export async function Nav() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
         <Link href="/" className="press flex items-center gap-2 font-semibold tracking-tight">
           <Sparkles className="h-5 w-5" />
-          Cluely
+          Otto
         </Link>
 
         <nav className="hidden items-center gap-7 text-sm text-muted md:flex">

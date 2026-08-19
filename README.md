@@ -1,6 +1,6 @@
-# Cluely
+# Otto
 
-A working clone of the Cluely product — a real-time meeting copilot. It listens to a
+A working clone of the Otto product — a real-time meeting copilot. It listens to a
 conversation, hands you an answer on a hotkey, and writes the notes once the call ends.
 
 Built with Next.js (App Router), Neon Postgres, and Claude.
@@ -47,7 +47,7 @@ The app is live and downloadable:
 
 - **Web app:** https://cluely-delta.vercel.app
 - **Windows installer:** https://cluely-delta.vercel.app/download → the latest GitHub Release
-  (`Cluely-Setup.exe`, Windows 10 2004+ / 11, x64).
+  (`Otto-Setup.exe`, Windows 10 2004+ / 11, x64).
 
 The desktop app is a thin shell that loads the hosted web app, so distribution is two moving
 parts:
@@ -57,15 +57,15 @@ parts:
    the Electron build artifacts out of the upload.
 2. **Installer on GitHub Releases.** `pnpm dist` builds the NSIS installer with
    electron-builder; the packaged app points at the hosted URL baked into `electron/config.js`.
-   Uploading it as `Cluely-Setup.exe` on the latest release makes the download page's
+   Uploading it as `Otto-Setup.exe` on the latest release makes the download page's
    permalink work across versions.
 
 ```bash
-pnpm dist          # build/icon.png + dist-desktop/Cluely Setup <version>.exe
+pnpm dist          # build/icon.png + dist-desktop/Otto Setup <version>.exe
 
 # cut a release (asset renamed to the stable name the download page links to)
-cp "dist-desktop/Cluely Setup 0.1.0.exe" dist-desktop/Cluely-Setup.exe
-gh release create v0.1.0 dist-desktop/Cluely-Setup.exe --title "Cluely 0.1.0"
+cp "dist-desktop/Otto Setup 0.1.0.exe" dist-desktop/Otto-Setup.exe
+gh release create v0.1.0 dist-desktop/Otto-Setup.exe --title "Otto 0.1.0"
 ```
 
 The installer is **not code-signed**, so Windows SmartScreen warns on first run (More info →

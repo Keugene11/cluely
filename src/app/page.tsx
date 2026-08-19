@@ -53,7 +53,7 @@ const steps = [
     step: "01",
     icon: Mic,
     title: "Start a session",
-    body: "Give it a name, hit start, and Cluely begins transcribing whatever it can hear.",
+    body: "Give it a name, hit start, and Otto begins transcribing whatever it can hear.",
   },
   {
     step: "02",
@@ -143,7 +143,7 @@ export default function Home() {
               </h1>
 
               <p className="mx-auto mt-6 max-w-xl text-pretty text-lg text-muted">
-                Cluely listens to your meetings, hands you the answer the moment you need it, and
+                Otto listens to your meetings, hands you the answer the moment you need it, and
                 writes the notes once everyone hangs up.
               </p>
 
@@ -196,7 +196,7 @@ export default function Home() {
 
                   <div className="bg-surface-2 p-5">
                     <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-muted">
-                      <Sparkles className="h-3.5 w-3.5" /> Cluely
+                      <Sparkles className="h-3.5 w-3.5" /> Otto
                     </p>
                     <p className="text-sm leading-relaxed">
                       Gross margin lands at <strong>78%</strong> once inference is amortized.
@@ -352,7 +352,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-10 text-sm text-muted sm:flex-row">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
-            <span>Cluely</span>
+            <span>Otto</span>
           </div>
           <p>A study build. Use it where everyone in the room knows it is on.</p>
         </div>

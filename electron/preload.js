@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld("cluely", {
   /** Ask the bar window to resize to fit content of the given pixel height. */
   resize: (height) => ipcRenderer.invoke("cluely:resize", height),
 
+  /** Launch an app or open a URL/path on the user's computer. */
+  open: (target) => ipcRenderer.invoke("cluely:open", target),
+
   /** Screenshot of the primary display as a PNG data URL, or null. */
   captureScreen: () => ipcRenderer.invoke("cluely:capture-screen"),
 

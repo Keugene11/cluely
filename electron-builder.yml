@@ -1,6 +1,6 @@
 appId: com.cluely.desktop
-productName: Cluely
-copyright: Cluely study build
+productName: Otto
+copyright: Otto study build
 
 # Where the auto-updater looks for new versions. Public repo, so no token
 # needed — electron-builder writes latest.yml to each release and the app polls
@@ -43,7 +43,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Cluely
+  shortcutName: Otto
 
 # macOS block kept for reference; building a mac target needs a Mac.
 mac:
