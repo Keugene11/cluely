@@ -257,8 +257,9 @@ function refreshTrayMenu() {
 
 /**
  * Grab a screenshot of the primary display so the assistant can read what is on
- * screen. The overlay hides itself for the frame so it does not appear in its
- * own shot; long edge is capped so the payload to Claude stays reasonable.
+ * screen. Our own windows stay VISIBLE but are excluded from the capture via
+ * content protection (WDA_EXCLUDEFROMCAPTURE) — so the panel doesn't flash off
+ * the screen every time you ask. Long edge is capped to keep the payload small.
  */
 async function captureScreen() {
   const primary = screen.getPrimaryDisplay();
@@ -269,13 +270,13 @@ async function captureScreen() {
   const cap = 1568; // Claude downsamples beyond ~1568px on the long edge anyway
   const factor = Math.min(1, cap / Math.max(nativeW, nativeH));
 
-  // Hide our own windows for the frame — the panel and the guiding cursor —
-  // so neither ends up in the screenshot Claude reads.
-  const overlayWasVisible = overlay && overlay.isVisible();
-  const cursorWasVisible = cursorWindow && cursorWindow.isVisible();
-  if (overlayWasVisible) overlay.hide();
-  if (cursorWasVisible) cursorWindow.hide();
-  await new Promise((r) => setTimeout(r, 90)); // let the compositor drop them
+  // Exclude our windows from the capture without hiding them. Remember the
+  // overlay's real setting so we can restore whatever the user chose.
+  const overlayLive = overlay && !overlay.isDestroyed();
+  const cursorLive = cursorWindow && !cursorWindow.isDestroyed();
+  if (overlayLive) overlay.setContentProtection(true);
+  if (cursorLive) cursorWindow.setContentProtection(true);
+  await new Promise((r) => setTimeout(r, 40)); // let the flag take effect
 
   try {
     const sources = await desktopCapturer.getSources({
@@ -292,14 +293,8 @@ async function captureScreen() {
   } catch {
     return null;
   } finally {
-    if (overlayWasVisible) {
-      overlay.show();
-      overlay.setAlwaysOnTop(true, "screen-saver");
-    }
-    if (cursorWasVisible) {
-      cursorWindow.showInactive();
-      cursorWindow.setAlwaysOnTop(true, "screen-saver");
-    }
+    if (overlayLive) overlay.setContentProtection(state.contentProtection);
+    if (cursorLive) cursorWindow.setContentProtection(false);
   }
 }
 
