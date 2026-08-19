@@ -41,6 +41,38 @@ with the desktop-only extras:
 Shortcuts: `Ctrl/Cmd+Enter` assist · `Ctrl/Cmd+Shift+Space` show/hide · `Ctrl/Cmd+Shift+H`
 click-through · `Ctrl/Cmd+Shift+Arrows` nudge the panel.
 
+## Download & distribution
+
+The app is live and downloadable:
+
+- **Web app:** https://cluely-delta.vercel.app
+- **Windows installer:** https://cluely-delta.vercel.app/download → the latest GitHub Release
+  (`Cluely-Setup.exe`, Windows 10 2004+ / 11, x64).
+
+The desktop app is a thin shell that loads the hosted web app, so distribution is two moving
+parts:
+
+1. **Backend on Vercel.** `next build` deploys to Vercel with `DATABASE_URL`,
+   `ANTHROPIC_API_KEY`, and `AUTH_SECRET` set as production env vars. `.vercelignore` keeps
+   the Electron build artifacts out of the upload.
+2. **Installer on GitHub Releases.** `pnpm dist` builds the NSIS installer with
+   electron-builder; the packaged app points at the hosted URL baked into `electron/config.js`.
+   Uploading it as `Cluely-Setup.exe` on the latest release makes the download page's
+   permalink work across versions.
+
+```bash
+pnpm dist          # build/icon.png + dist-desktop/Cluely Setup <version>.exe
+
+# cut a release (asset renamed to the stable name the download page links to)
+cp "dist-desktop/Cluely Setup 0.1.0.exe" dist-desktop/Cluely-Setup.exe
+gh release create v0.1.0 dist-desktop/Cluely-Setup.exe --title "Cluely 0.1.0"
+```
+
+The installer is **not code-signed**, so Windows SmartScreen warns on first run (More info →
+Run anyway). Signing needs a code-signing certificate; a macOS build additionally needs a Mac
+to notarize, which is why only Windows ships today. Auto-update is not wired up yet —
+electron-builder can publish an update feed to the same releases when that is wanted.
+
 ## Not built on purpose
 
 The real product sells a "Pro + Undetectability" tier aimed at staying hidden from
