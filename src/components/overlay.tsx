@@ -22,6 +22,7 @@ import {
 import { useLiveSession } from "@/hooks/use-live-session";
 import { useGuide } from "@/hooks/use-guide";
 import { useAct } from "@/hooks/use-act";
+import { useVoice } from "@/hooks/use-voice";
 import { getDesktop, type DesktopBridge, type UpdateState } from "@/lib/desktop";
 import { AnswerBody } from "@/components/answer-body";
 
@@ -38,6 +39,7 @@ export function Overlay() {
   const [open, setOpen] = useState(false);
   const guide = useGuide(voiceOn);
   const act = useAct(voiceOn);
+  const voice = useVoice();
 
   const [hidden, setHidden] = useState(false);
   const [clickThrough, setClickThrough] = useState(false);
@@ -65,14 +67,14 @@ export function Overlay() {
     const offVoice = bridge.onVoiceGuide(() => {
       setMode("guide");
       setOpen(true);
-      guide.listen();
+      voice.toggle((t) => guide.guide(t));
     });
     return () => {
       offState();
       offUpdate();
       offVoice();
     };
-  }, [guide]);
+  }, [guide, voice]);
 
   // Auto-resize the window to hug the content (Otto's bar-that-expands).
   useEffect(() => {
@@ -220,9 +222,11 @@ export function Overlay() {
       {/* The expanding panel */}
       {panelOpen && (
         <div className="cpanel rise mt-2 overflow-hidden" style={noDrag}>
-          {mode === "assist" && <AssistPanel live={live} onAsk={askAssist} hasDesktop={Boolean(desktop)} />}
-          {mode === "guide" && <GuidePanel guide={guide} hasDesktop={Boolean(desktop)} />}
-          {mode === "act" && <ActPanel act={act} hasDesktop={Boolean(desktop)} />}
+          {mode === "assist" && (
+            <AssistPanel live={live} onAsk={askAssist} voice={voice} hasDesktop={Boolean(desktop)} />
+          )}
+          {mode === "guide" && <GuidePanel guide={guide} voice={voice} hasDesktop={Boolean(desktop)} />}
+          {mode === "act" && <ActPanel act={act} voice={voice} hasDesktop={Boolean(desktop)} />}
         </div>
       )}
     </div>
@@ -234,10 +238,12 @@ export function Overlay() {
 function AssistPanel({
   live,
   onAsk,
+  voice,
   hasDesktop,
 }: {
   live: ReturnType<typeof useLiveSession>;
   onAsk: () => void;
+  voice: ReturnType<typeof useVoice>;
   hasDesktop: boolean;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
@@ -275,12 +281,18 @@ function AssistPanel({
         <div ref={endRef} />
       </div>
 
+      {voice.error && <p className="notice mx-4 mb-2">{voice.error}</p>}
       <InputRow
         value={live.question}
         onChange={live.setQuestion}
         onSubmit={onAsk}
         busy={live.asking}
         placeholder="Ask anything…"
+        mic={{
+          recording: voice.recording,
+          busy: voice.busy,
+          toggle: () => voice.toggle((t) => live.setQuestion(t)),
+        }}
       />
     </>
   );
@@ -290,9 +302,11 @@ function AssistPanel({
 
 function GuidePanel({
   guide,
+  voice,
   hasDesktop,
 }: {
   guide: ReturnType<typeof useGuide>;
+  voice: ReturnType<typeof useVoice>;
   hasDesktop: boolean;
 }) {
   const [q, setQ] = useState("");
@@ -393,13 +407,18 @@ function GuidePanel({
         )}
       </div>
 
+      {voice.error && <p className="notice mx-4 mb-2">{voice.error}</p>}
       <InputRow
         value={q}
         onChange={setQ}
         onSubmit={submit}
         busy={guide.working}
         placeholder={guide.result ? "Ask a follow-up…" : "How do I…?"}
-        mic={{ listening: guide.listening, toggle: guide.listening ? guide.stopListening : guide.listen }}
+        mic={{
+          recording: voice.recording,
+          busy: voice.busy,
+          toggle: () => voice.toggle((t) => guide.guide(t)),
+        }}
       />
     </>
   );
@@ -407,7 +426,15 @@ function GuidePanel({
 
 // ── Act panel ────────────────────────────────────────────────────────────────
 
-function ActPanel({ act, hasDesktop }: { act: ReturnType<typeof useAct>; hasDesktop: boolean }) {
+function ActPanel({
+  act,
+  voice,
+  hasDesktop,
+}: {
+  act: ReturnType<typeof useAct>;
+  voice: ReturnType<typeof useVoice>;
+  hasDesktop: boolean;
+}) {
   const [cmd, setCmd] = useState("");
   const submit = () => {
     const t = cmd.trim();
@@ -445,12 +472,18 @@ function ActPanel({ act, hasDesktop }: { act: ReturnType<typeof useAct>; hasDesk
         ))}
       </div>
 
+      {voice.error && <p className="notice mx-4 mb-2">{voice.error}</p>}
       <InputRow
         value={cmd}
         onChange={setCmd}
         onSubmit={submit}
         busy={act.busy}
         placeholder="Open an app, site, or search…"
+        mic={{
+          recording: voice.recording,
+          busy: voice.busy,
+          toggle: () => voice.toggle((t) => act.run(t)),
+        }}
       />
     </>
   );
@@ -471,7 +504,7 @@ function InputRow({
   onSubmit: () => void;
   busy: boolean;
   placeholder: string;
-  mic?: { listening: boolean; toggle: () => void };
+  mic?: { recording: boolean; busy: boolean; toggle: () => void };
 }) {
   return (
     <div className="flex items-end gap-2 border-t border-white/8 p-2.5">
@@ -485,20 +518,27 @@ function InputRow({
           }
         }}
         rows={1}
-        placeholder={placeholder}
+        placeholder={mic?.recording ? "Listening…" : mic?.busy ? "Transcribing…" : placeholder}
         className="flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/20"
       />
       {mic && (
         <button
           onClick={mic.toggle}
+          disabled={mic.busy}
           className={`press flex h-[40px] w-[40px] items-center justify-center rounded-xl border ${
-            mic.listening
+            mic.recording
               ? "border-red-500/50 bg-red-500/15 text-red-300"
               : "border-white/10 bg-white/[0.04] text-muted hover:text-foreground"
           }`}
-          title="Ask by voice (Ctrl+Shift+G)"
+          title="Ask by voice"
         >
-          {mic.listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {mic.busy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : mic.recording ? (
+            <MicOff className="h-4 w-4" />
+          ) : (
+            <Mic className="h-4 w-4" />
+          )}
         </button>
       )}
       <button
