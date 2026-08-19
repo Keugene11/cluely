@@ -17,6 +17,15 @@ contextBridge.exposeInMainWorld("cluely", {
   hide: () => ipcRenderer.invoke("cluely:hide"),
   quit: () => ipcRenderer.invoke("cluely:quit"),
 
+  // Auto-update
+  getUpdateState: () => ipcRenderer.invoke("cluely:get-update-state"),
+  installUpdate: () => ipcRenderer.invoke("cluely:install-update"),
+  onUpdate: (callback) => {
+    const handler = (_event, next) => callback(next);
+    ipcRenderer.on("cluely:update", handler);
+    return () => ipcRenderer.off("cluely:update", handler);
+  },
+
   /** Fires when the global Ctrl/Cmd+Enter hotkey is pressed, app focused or not. */
   onAssist: (callback) => {
     const handler = () => callback();

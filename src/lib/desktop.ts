@@ -6,6 +6,12 @@ export type DesktopState = {
   platform: string;
 };
 
+export type UpdateState = {
+  status: "idle" | "checking" | "downloading" | "ready";
+  version: string | null;
+  progress: number;
+};
+
 export type DesktopBridge = {
   isDesktop: true;
   getState: () => Promise<DesktopState>;
@@ -14,6 +20,9 @@ export type DesktopBridge = {
   setClickThrough: (enabled: boolean) => Promise<boolean>;
   hide: () => Promise<void>;
   quit: () => Promise<void>;
+  getUpdateState: () => Promise<UpdateState>;
+  installUpdate: () => Promise<void>;
+  onUpdate: (callback: (state: UpdateState) => void) => () => void;
   onAssist: (callback: () => void) => () => void;
   onState: (callback: (state: DesktopState) => void) => () => void;
 };

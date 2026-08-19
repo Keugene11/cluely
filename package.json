@@ -1,6 +1,6 @@
 {
   "name": "cluely",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -18,6 +18,7 @@
     "@anthropic-ai/sdk": "^0.117.1",
     "@neondatabase/serverless": "^1.1.0",
     "bcryptjs": "^3.0.3",
+    "electron-updater": "^6.8.9",
     "jose": "^6.2.9",
     "lucide-react": "^1.32.0",
     "next": "16.3.1",

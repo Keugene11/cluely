@@ -13,6 +13,7 @@ const {
 } = require("electron");
 const path = require("node:path");
 const { APP_URL } = require("./config");
+const { initUpdater, installUpdate, getUpdateState } = require("./updater");
 const OVERLAY_SIZE = { width: 440, height: 620 };
 
 let tray = null;
@@ -89,10 +90,35 @@ function createTray() {
 
   tray = new Tray(icon);
   tray.setToolTip("Cluely");
+  refreshTrayMenu();
 
-  const menu = Menu.buildFromTemplate([
+  // Left-click toggles the panel; on Windows a single click is most expected.
+  tray.on("click", toggleVisible);
+}
+
+/** Rebuilt whenever update state changes so a ready update surfaces here too. */
+function refreshTrayMenu() {
+  if (!tray) return;
+  const update = getUpdateState();
+
+  const items = [
     { label: "Show / hide", click: toggleVisible },
     { label: "Reset position", click: resetPosition },
+    { type: "separator" },
+  ];
+
+  if (update.status === "ready") {
+    items.push({
+      label: `Restart to update (${update.version})`,
+      click: installUpdate,
+    });
+  } else if (update.status === "downloading") {
+    items.push({ label: `Downloading update… ${update.progress}%`, enabled: false });
+  } else {
+    items.push({ label: "You're up to date", enabled: false });
+  }
+
+  items.push(
     { type: "separator" },
     {
       label: "Quit Cluely",
@@ -102,11 +128,9 @@ function createTray() {
         app.quit();
       },
     },
-  ]);
-  tray.setContextMenu(menu);
+  );
 
-  // Left-click toggles the panel; on Windows a single click is most expected.
-  tray.on("click", toggleVisible);
+  tray.setContextMenu(Menu.buildFromTemplate(items));
 }
 
 /**
@@ -251,6 +275,12 @@ app.whenReady().then(() => {
   createTray();
   registerShortcuts();
 
+  // Auto-update: push each state change to the tray menu and the overlay UI.
+  initUpdater((updateState) => {
+    refreshTrayMenu();
+    overlay?.webContents.send("cluely:update", updateState);
+  });
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createOverlay();
   });
@@ -269,6 +299,8 @@ ipcMain.handle("cluely:hide", () => {
   state.visible = false;
 });
 ipcMain.handle("cluely:capture-screen", () => captureScreen());
+ipcMain.handle("cluely:get-update-state", () => getUpdateState());
+ipcMain.handle("cluely:install-update", () => installUpdate());
 ipcMain.handle("cluely:quit", () => {
   quitting = true;
   app.quit();

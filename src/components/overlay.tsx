@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CornerDownLeft,
+  Download,
   Eye,
   EyeOff,
   Loader2,
@@ -19,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useLiveSession } from "@/hooks/use-live-session";
-import { getDesktop, type DesktopBridge } from "@/lib/desktop";
+import { getDesktop, type DesktopBridge, type UpdateState } from "@/lib/desktop";
 
 /** Drag the whole window by its header, the way a frameless app does. */
 const dragStyle = { WebkitAppRegion: "drag" } as React.CSSProperties;
@@ -33,6 +34,7 @@ export function Overlay() {
   const [clickThrough, setClickThrough] = useState(false);
   const [platform, setPlatform] = useState("");
   const [ended, setEnded] = useState(false);
+  const [update, setUpdate] = useState<UpdateState | null>(null);
   const answersEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,10 +51,16 @@ export function Overlay() {
       setPlatform(state.platform);
     });
 
-    return bridge.onState((state) => {
+    void bridge.getUpdateState().then(setUpdate);
+    const offState = bridge.onState((state) => {
       setHidden(state.contentProtection);
       setClickThrough(state.clickThrough);
     });
+    const offUpdate = bridge.onUpdate(setUpdate);
+    return () => {
+      offState();
+      offUpdate();
+    };
   }, []);
 
   // The global hotkey arrives from the main process, app focused or not.
@@ -80,10 +88,14 @@ export function Overlay() {
   const canSeeScreen = Boolean(desktop);
   const lastLines = live.lines.slice(-2);
 
+  const updateBanner = update ? (
+    <UpdateBanner update={update} onInstall={() => desktop?.installUpdate()} />
+  ) : null;
+
   // ---- Start ----------------------------------------------------------------
   if (!live.sessionId) {
     return (
-      <Shell desktop={desktop} onClose={() => desktop?.quit()}>
+      <Shell desktop={desktop} onClose={() => desktop?.quit()} banner={updateBanner}>
         <div className="flex flex-1 flex-col justify-center gap-3 px-4 pb-5" style={noDragStyle}>
           <p className="text-sm leading-relaxed text-muted">
             Name what you&rsquo;re doing. Cluely listens, reads your screen, and answers on{" "}
@@ -133,6 +145,7 @@ export function Overlay() {
         if (!desktop) return;
         setClickThrough(await desktop.setClickThrough(!clickThrough));
       }}
+      banner={updateBanner}
       status={
         <span className="flex items-center gap-1.5">
           <span
@@ -302,11 +315,50 @@ function Pill({
   );
 }
 
+function UpdateBanner({
+  update,
+  onInstall,
+}: {
+  update: UpdateState;
+  onInstall: () => void;
+}) {
+  if (update.status === "ready") {
+    return (
+      <div
+        className="flex items-center justify-between gap-2 border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px]"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <span className="flex items-center gap-1.5 text-foreground">
+          <Download className="h-3.5 w-3.5" />
+          Update {update.version} ready
+        </span>
+        <button
+          onClick={onInstall}
+          className="press rounded-full bg-foreground px-2.5 py-0.5 font-medium text-background"
+        >
+          Restart
+        </button>
+      </div>
+    );
+  }
+
+  if (update.status === "downloading") {
+    return (
+      <p className="border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px] text-muted">
+        Downloading update… {update.progress}%
+      </p>
+    );
+  }
+
+  return null;
+}
+
 function Shell({
   children,
   desktop,
   onClose,
   status,
+  banner,
   hidden,
   clickThrough,
   platform,
@@ -317,6 +369,7 @@ function Shell({
   desktop: DesktopBridge | null;
   onClose: () => void;
   status?: React.ReactNode;
+  banner?: React.ReactNode;
   hidden?: boolean;
   clickThrough?: boolean;
   platform?: string;
@@ -382,6 +435,8 @@ function Shell({
           </button>
         </div>
       </header>
+
+      {banner}
 
       {hidden && platform === "darwin" && (
         <p className="border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px] text-amber-300/90">

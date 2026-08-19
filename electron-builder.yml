@@ -2,12 +2,23 @@ appId: com.cluely.desktop
 productName: Cluely
 copyright: Cluely study build
 
+# Where the auto-updater looks for new versions. Public repo, so no token
+# needed — electron-builder writes latest.yml to each release and the app polls
+# these releases on launch.
+publish:
+  provider: github
+  owner: Keugene11
+  repo: cluely
+  releaseType: release # publish live (not draft) so the update feed is public
+
 directories:
   output: dist-desktop
   buildResources: build
 
-# The desktop app is a thin shell that loads the hosted web app, so it only
-# needs the electron sources and its runtime deps — not the Next build.
+# The desktop shell needs its own sources plus electron-updater (and its
+# dependency tree) at runtime. electron-builder bundles production dependencies
+# automatically; the web-side deps (Next, React, the SDK) ride along unused but
+# guarantee the updater's tree is present — correctness over a smaller download.
 files:
   - electron/**/*
   - package.json
@@ -22,6 +33,9 @@ win:
       arch:
         - x64
   icon: build/icon.png
+
+# Space-free artifact name so the update-feed URLs stay clean.
+artifactName: ${productName}-Setup-${version}.${ext}
 
 nsis:
   oneClick: false
