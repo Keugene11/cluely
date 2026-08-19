@@ -1,6 +1,7 @@
 const {
   app,
   BrowserWindow,
+  desktopCapturer,
   globalShortcut,
   ipcMain,
   Menu,
@@ -106,6 +107,46 @@ function createTray() {
 
   // Left-click toggles the panel; on Windows a single click is most expected.
   tray.on("click", toggleVisible);
+}
+
+/**
+ * Grab a screenshot of the primary display so the assistant can read what is on
+ * screen. The overlay hides itself for the frame so it does not appear in its
+ * own shot; long edge is capped so the payload to Claude stays reasonable.
+ */
+async function captureScreen() {
+  const primary = screen.getPrimaryDisplay();
+  const { width, height } = primary.size;
+  const scale = primary.scaleFactor || 1;
+  const nativeW = Math.round(width * scale);
+  const nativeH = Math.round(height * scale);
+  const cap = 1568; // Claude downsamples beyond ~1568px on the long edge anyway
+  const factor = Math.min(1, cap / Math.max(nativeW, nativeH));
+
+  const wasVisible = overlay && overlay.isVisible();
+  if (wasVisible) overlay.hide();
+  await new Promise((r) => setTimeout(r, 90)); // let the compositor drop it
+
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: {
+        width: Math.round(nativeW * factor),
+        height: Math.round(nativeH * factor),
+      },
+    });
+    const source =
+      sources.find((s) => s.display_id === String(primary.id)) || sources[0];
+    if (!source || source.thumbnail.isEmpty()) return null;
+    return source.thumbnail.toDataURL(); // data:image/png;base64,...
+  } catch {
+    return null;
+  } finally {
+    if (wasVisible) {
+      overlay.show();
+      overlay.setAlwaysOnTop(true, "screen-saver");
+    }
+  }
 }
 
 function resetPosition() {
@@ -227,6 +268,7 @@ ipcMain.handle("cluely:hide", () => {
   overlay?.hide();
   state.visible = false;
 });
+ipcMain.handle("cluely:capture-screen", () => captureScreen());
 ipcMain.handle("cluely:quit", () => {
   quitting = true;
   app.quit();

@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld("cluely", {
   isDesktop: true,
 
   getState: () => ipcRenderer.invoke("cluely:get-state"),
+
+  /** Screenshot of the primary display as a PNG data URL, or null. */
+  captureScreen: () => ipcRenderer.invoke("cluely:capture-screen"),
+
   setContentProtection: (enabled) => ipcRenderer.invoke("cluely:set-content-protection", enabled),
   setClickThrough: (enabled) => ipcRenderer.invoke("cluely:set-click-through", enabled),
   hide: () => ipcRenderer.invoke("cluely:hide"),

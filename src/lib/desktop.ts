@@ -9,6 +9,7 @@ export type DesktopState = {
 export type DesktopBridge = {
   isDesktop: true;
   getState: () => Promise<DesktopState>;
+  captureScreen: () => Promise<string | null>;
   setContentProtection: (enabled: boolean) => Promise<boolean>;
   setClickThrough: (enabled: boolean) => Promise<boolean>;
   hide: () => Promise<void>;

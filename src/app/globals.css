@@ -114,3 +114,54 @@ body:has(.overlay-root) {
 .overlay-root {
   height: 100vh;
 }
+
+/* ── Desktop overlay: premium dark-glass panel ────────────────────────────── */
+.glass {
+  background: linear-gradient(180deg, rgba(20, 20, 22, 0.82), rgba(10, 10, 11, 0.9));
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 24px 70px -20px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Hairline sheen along the very top edge of the panel. */
+.glass-edge::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  pointer-events: none;
+}
+
+.answer-card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.85rem;
+}
+
+/* Soft brand glow that sits behind the header. */
+.overlay-glow {
+  position: absolute;
+  inset: -40% 0 auto 0;
+  height: 220px;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(150, 130, 255, 0.18), transparent 70%);
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.reading-chip {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 25%,
+    rgba(255, 255, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}

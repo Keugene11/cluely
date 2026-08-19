@@ -36,17 +36,20 @@ export function OverlayLogin() {
 
   return (
     <div
-      className="flex h-screen flex-col overflow-hidden rounded-2xl border border-line bg-background/95 backdrop-blur-xl"
+      className="glass glass-edge relative flex h-screen flex-col overflow-hidden rounded-[18px]"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-sm font-medium">
+      <div className="overlay-glow" />
+      <header className="relative flex items-center justify-between gap-2 border-b border-white/8 px-4 py-2.5 text-sm font-semibold tracking-tight">
         <span className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4" />
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/10">
+            <Sparkles className="h-3.5 w-3.5" />
+          </span>
           Cluely
         </span>
         <button
           onClick={() => getDesktop()?.quit()}
-          className="press rounded-md p-1.5 text-muted hover:text-foreground"
+          className="press rounded-lg p-1.5 text-muted hover:bg-white/10 hover:text-foreground"
           aria-label="Quit"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
@@ -69,7 +72,7 @@ export function OverlayLogin() {
           required
           placeholder="you@work.com"
           autoComplete="email"
-          className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm outline-none placeholder:text-muted focus:border-foreground/40"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
         />
         <input
           name="password"
@@ -77,7 +80,7 @@ export function OverlayLogin() {
           required
           placeholder="Password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
-          className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm outline-none placeholder:text-muted focus:border-foreground/40"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
         />
 
         {error && <p className="text-xs text-red-400">{error}</p>}

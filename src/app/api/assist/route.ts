@@ -1,8 +1,11 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { sql } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import { anthropic, MODEL, LIVE_SYSTEM } from "@/lib/claude";
 
 export const maxDuration = 60;
+
+const IMAGE_RE = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/;
 
 /**
  * The Ctrl/Cmd+Enter path: takes the live transcript tail plus an optional typed
@@ -12,7 +15,7 @@ export async function POST(req: Request) {
   const user = await getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
 
-  const { sessionId, question, transcript } = await req.json();
+  const { sessionId, question, transcript, image } = await req.json();
 
   const files = await sql`
     select name, content from context_files where user_id = ${user.id} order by created_at desc limit 5
@@ -24,15 +27,35 @@ export async function POST(req: Request) {
   const tail = String(transcript ?? "").slice(-6000);
   const ask = String(question ?? "").trim();
 
+  const match = typeof image === "string" ? image.match(IMAGE_RE) : null;
+  const hasScreen = Boolean(match);
+
   const prompt = [
     context && `What the user gave you ahead of the call:\n${context}`,
     tail ? `Live transcript (most recent last):\n${tail}` : "Live transcript: (nothing captured yet)",
+    hasScreen
+      ? "A screenshot of the user's screen right now is attached — read it and use it."
+      : null,
     ask
       ? `The user typed: ${ask}`
-      : "The user hit the hotkey with no typed question — answer whatever was just asked of them in the transcript.",
+      : "The user hit the hotkey with no typed question — answer whatever was just asked of them, on screen or in the transcript.",
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  // Vision: put the screenshot before the text so Claude reads it as context.
+  const content: Anthropic.ContentBlockParam[] = [];
+  if (match) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: match[1] as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
+        data: match[2],
+      },
+    });
+  }
+  content.push({ type: "text", text: prompt });
 
   let stream;
   try {
@@ -41,7 +64,7 @@ export async function POST(req: Request) {
       max_tokens: 1024,
       system: LIVE_SYSTEM,
       output_config: { effort: "low" },
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content }],
     });
   } catch {
     return new Response(

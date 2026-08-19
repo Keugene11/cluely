@@ -8,8 +8,10 @@ import {
   Loader2,
   Mic,
   MicOff,
+  MonitorDot,
   MousePointerClick,
   Radio,
+  ScanEye,
   Sparkles,
   Square,
   User,
@@ -73,23 +75,25 @@ export function Overlay() {
 
   useEffect(() => {
     answersEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [live.assists]);
+  }, [live.assists, live.capturing]);
 
+  const canSeeScreen = Boolean(desktop);
   const lastLines = live.lines.slice(-2);
 
   // ---- Start ----------------------------------------------------------------
   if (!live.sessionId) {
     return (
       <Shell desktop={desktop} onClose={() => desktop?.quit()}>
-        <div className="flex flex-1 flex-col justify-center gap-3 px-4 pb-4" style={noDragStyle}>
-          <p className="text-sm text-muted">
-            Name the call, then Cluely listens and answers on <kbd>Ctrl</kbd> + <kbd>Enter</kbd>.
+        <div className="flex flex-1 flex-col justify-center gap-3 px-4 pb-5" style={noDragStyle}>
+          <p className="text-sm leading-relaxed text-muted">
+            Name what you&rsquo;re doing. Cluely listens, reads your screen, and answers on{" "}
+            <kbd>Ctrl</kbd> + <kbd>Enter</kbd>.
           </p>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Pricing call with Northwind"
-            className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm outline-none placeholder:text-muted focus:border-foreground/40"
+            placeholder="Pricing call · coding round · study session"
+            className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
           />
           <button
             onClick={() => live.start(title, "meeting")}
@@ -101,11 +105,11 @@ export function Overlay() {
             ) : (
               <Radio className="h-4 w-4" />
             )}
-            Start listening
+            Start
           </button>
-          {!live.supported && (
-            <p className="text-xs text-amber-400">
-              Speech recognition is unavailable here — you can still type questions.
+          {canSeeScreen && (
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted">
+              <ScanEye className="h-3.5 w-3.5" /> Screen reading is on for this device
             </p>
           )}
         </div>
@@ -141,23 +145,35 @@ export function Overlay() {
       }
     >
       {/* Answers */}
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3" style={noDragStyle}>
-        {live.micError && <p className="text-xs text-amber-400">{live.micError}</p>}
-
-        {live.assists.length === 0 && !live.micError && (
-          <p className="text-sm text-muted">
-            Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> and I answer whatever was just asked of you.
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3.5" style={noDragStyle}>
+        {live.micError && (
+          <p className="answer-card p-3 text-xs leading-relaxed text-amber-300/90">
+            {live.micError}
           </p>
         )}
 
+        {live.assists.length === 0 && !live.micError && (
+          <div className="space-y-2.5">
+            <p className="text-sm leading-relaxed text-muted">
+              Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> and I answer what&rsquo;s on your screen or
+              what was just asked of you.
+            </p>
+            {canSeeScreen && (
+              <p className="flex items-center gap-1.5 text-xs text-muted/80">
+                <ScanEye className="h-3.5 w-3.5" /> I can see your screen when you ask.
+              </p>
+            )}
+          </div>
+        )}
+
         {live.assists.map((assist, i) => (
-          <div key={i} className="rise rounded-xl border border-line bg-surface/90 p-3">
+          <div key={i} className="answer-card rise p-3.5">
             {assist.question && (
               <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">
                 {assist.question}
               </p>
             )}
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
               {assist.answer || <span className="text-muted">thinking…</span>}
               {!assist.done && assist.answer && (
                 <span className="ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 bg-foreground/70" />
@@ -165,12 +181,19 @@ export function Overlay() {
             </p>
           </div>
         ))}
+
+        {live.capturing && (
+          <div className="reading-chip flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-foreground/80">
+            <ScanEye className="h-3.5 w-3.5" /> Reading your screen…
+          </div>
+        )}
+
         <div ref={answersEndRef} />
       </div>
 
       {/* Transcript ticker */}
       {lastLines.length > 0 && (
-        <div className="border-t border-line px-4 py-2" style={noDragStyle}>
+        <div className="border-t border-white/8 px-4 py-2" style={noDragStyle}>
           {lastLines.map((line, i) => (
             <p key={i} className="truncate text-[11px] text-muted">
               <span className={line.speaker === "me" ? "" : "text-foreground/70"}>
@@ -179,24 +202,26 @@ export function Overlay() {
               {line.text}
             </p>
           ))}
-          {live.interim && <p className="truncate text-[11px] italic text-muted/60">{live.interim}</p>}
+          {live.interim && (
+            <p className="truncate text-[11px] italic text-muted/60">{live.interim}</p>
+          )}
         </div>
       )}
 
       {/* Controls */}
-      <div className="space-y-2 border-t border-line p-3" style={noDragStyle}>
+      <div className="space-y-2.5 border-t border-white/8 p-3" style={noDragStyle}>
         <div className="flex items-end gap-2">
           <textarea
             value={live.question}
             onChange={(e) => live.setQuestion(e.target.value)}
             rows={1}
-            placeholder="Ask something specific…"
-            className="flex-1 resize-none rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-foreground/40"
+            placeholder="Ask anything, or just hit the hotkey…"
+            className="flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
           />
           <button
             onClick={live.ask}
             disabled={live.asking}
-            className="press flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-foreground text-background disabled:opacity-60"
+            className="press flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-foreground text-background disabled:opacity-60"
             aria-label="Ask"
           >
             {live.asking ? (
@@ -209,9 +234,8 @@ export function Overlay() {
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <button
+            <Pill
               onClick={() => live.setSpeaker(live.speaker === "them" ? "me" : "them")}
-              className="press flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-muted hover:text-foreground"
               title="Who is speaking right now"
             >
               {live.speaker === "me" ? (
@@ -220,15 +244,21 @@ export function Overlay() {
                 <Users className="h-3 w-3" />
               )}
               {live.speaker === "me" ? "Me" : "Them"}
-            </button>
+            </Pill>
 
-            <button
-              onClick={live.listening ? live.stopListening : live.startListening}
-              className="press flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-muted hover:text-foreground"
-            >
+            <Pill onClick={live.listening ? live.stopListening : live.startListening}>
               {live.listening ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
               {live.listening ? "Pause" : "Resume"}
-            </button>
+            </Pill>
+
+            {canSeeScreen && (
+              <span
+                className="flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-muted"
+                title="The assistant reads your screen when you ask"
+              >
+                <MonitorDot className="h-3 w-3" /> Screen
+              </span>
+            )}
           </div>
 
           <button
@@ -237,18 +267,38 @@ export function Overlay() {
               setEnded(true);
             }}
             disabled={live.ending || ended}
-            className="press flex items-center gap-1.5 rounded-full bg-foreground px-2.5 py-1 text-[11px] font-medium text-background disabled:opacity-60"
+            className="press flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1 text-[11px] font-medium text-background disabled:opacity-60"
           >
             {live.ending ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
               <Square className="h-3 w-3" />
             )}
-            {ended ? "Notes ready in app" : "End"}
+            {ended ? "Notes in app" : "End"}
           </button>
         </div>
       </div>
     </Shell>
+  );
+}
+
+function Pill({
+  children,
+  onClick,
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="press flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-muted hover:border-white/25 hover:text-foreground"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -274,13 +324,17 @@ function Shell({
   onToggleClickThrough?: () => void;
 }) {
   return (
-    <div className="flex h-screen flex-col overflow-hidden rounded-2xl border border-line bg-background/95 backdrop-blur-xl">
+    <div className="glass glass-edge relative flex h-screen flex-col overflow-hidden rounded-[18px]">
+      <div className="overlay-glow" />
+
       <header
-        className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5"
+        className="relative flex items-center justify-between gap-2 border-b border-white/8 px-4 py-2.5"
         style={dragStyle}
       >
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="h-4 w-4" />
+        <span className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/10">
+            <Sparkles className="h-3.5 w-3.5" />
+          </span>
           Cluely
           {status && <span className="text-[11px] font-normal text-muted">{status}</span>}
         </span>
@@ -294,8 +348,8 @@ function Shell({
                   ? "Clicks pass through to the app underneath (Ctrl+Shift+H)"
                   : "Clicks land on this panel (Ctrl+Shift+H)"
               }
-              className={`press rounded-md p-1.5 ${
-                clickThrough ? "text-foreground" : "text-muted hover:text-foreground"
+              className={`press rounded-lg p-1.5 ${
+                clickThrough ? "bg-white/10 text-foreground" : "text-muted hover:text-foreground"
               }`}
             >
               <MousePointerClick className="h-3.5 w-3.5" />
@@ -310,8 +364,8 @@ function Shell({
                   ? "Hidden from screen capture — click to show again"
                   : "Visible in screen shares and recordings — click to hide"
               }
-              className={`press flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] ${
-                hidden ? "bg-surface-2 text-foreground" : "text-muted hover:text-foreground"
+              className={`press flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] ${
+                hidden ? "bg-white/10 text-foreground" : "text-muted hover:text-foreground"
               }`}
             >
               {hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -321,8 +375,8 @@ function Shell({
 
           <button
             onClick={onClose}
-            className="press rounded-md p-1.5 text-muted hover:text-foreground"
-            aria-label="Close"
+            className="press rounded-lg p-1.5 text-muted hover:bg-white/10 hover:text-foreground"
+            aria-label="Quit"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -330,14 +384,14 @@ function Shell({
       </header>
 
       {hidden && platform === "darwin" && (
-        <p className="border-b border-line bg-surface-2 px-4 py-1.5 text-[11px] text-amber-400">
+        <p className="border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px] text-amber-300/90">
           macOS: apps capturing via ScreenCaptureKit still see this window.
         </p>
       )}
 
       {!desktop && (
-        <p className="border-b border-line bg-surface-2 px-4 py-1.5 text-[11px] text-muted">
-          Running in a browser tab — window controls need the desktop app.
+        <p className="border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px] text-muted">
+          Running in a browser tab — screen reading and window controls need the desktop app.
         </p>
       )}
 

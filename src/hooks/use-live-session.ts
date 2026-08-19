@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { getDesktop } from "@/lib/desktop";
 
 export type Line = { speaker: "me" | "them"; text: string; at_ms: number };
 export type Assist = { question: string; answer: string; done: boolean };
@@ -56,6 +57,7 @@ export function useLiveSession() {
   const [assists, setAssists] = useState<Assist[]>([]);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
+  const [capturing, setCapturing] = useState(false);
 
   const supported = useSyncExternalStore(
     noSubscribe,
@@ -212,11 +214,26 @@ export function useLiveSession() {
       .map((l) => `${l.speaker === "me" ? "Me" : "Them"}: ${l.text}`)
       .join("\n");
 
+    // On the desktop, read the screen too so the assistant can answer about
+    // whatever is in front of you — a coding problem, a slide, a spreadsheet.
+    let image: string | null = null;
+    const desktop = getDesktop();
+    if (desktop?.captureScreen) {
+      setCapturing(true);
+      try {
+        image = await desktop.captureScreen();
+      } catch {
+        /* fall back to audio + text only */
+      } finally {
+        setCapturing(false);
+      }
+    }
+
     try {
       const res = await fetch("/api/assist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sessionIdRef.current, question: typed, transcript }),
+        body: JSON.stringify({ sessionId: sessionIdRef.current, question: typed, transcript, image }),
       });
 
       if (!res.body) {
@@ -275,6 +292,7 @@ export function useLiveSession() {
     question,
     setQuestion,
     asking,
+    capturing,
     start,
     startListening,
     stopListening,
