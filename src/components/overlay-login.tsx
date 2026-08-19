@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, Sparkles } from "lucide-react";
+import { ArrowRight, Loader2, Sparkles, X } from "lucide-react";
+import { getDesktop } from "@/lib/desktop";
 
 /** Compact sign-in for the desktop panel — the full page does not fit a 440px window. */
 export function OverlayLogin() {
@@ -38,9 +39,19 @@ export function OverlayLogin() {
       className="flex h-screen flex-col overflow-hidden rounded-2xl border border-line bg-background/95 backdrop-blur-xl"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
-      <header className="flex items-center gap-2 border-b border-line px-4 py-2.5 text-sm font-medium">
-        <Sparkles className="h-4 w-4" />
-        Cluely
+      <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-sm font-medium">
+        <span className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4" />
+          Cluely
+        </span>
+        <button
+          onClick={() => getDesktop()?.quit()}
+          className="press rounded-md p-1.5 text-muted hover:text-foreground"
+          aria-label="Quit"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </header>
 
       <form

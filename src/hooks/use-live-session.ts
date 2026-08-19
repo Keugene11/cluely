@@ -137,7 +137,17 @@ export function useLiveSession() {
         setMicError("Microphone access was blocked. Allow it and start again.");
         shouldListenRef.current = false;
         setListening(false);
+      } else if (event.error === "network") {
+        // The Web Speech API relies on a hosted recognizer. It is reliable in
+        // Chrome but not inside a packaged desktop build — say so instead of
+        // silently capturing nothing.
+        setMicError(
+          "Live transcription is unavailable here. Type your question below, or open the web app in Chrome for automatic transcription.",
+        );
+        shouldListenRef.current = false;
+        setListening(false);
       }
+      // "no-speech" / "aborted" are transient — the onend handler restarts.
     };
 
     // Browsers cut the stream every ~60s; restart while the user still wants it on.
