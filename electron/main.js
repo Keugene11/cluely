@@ -20,6 +20,57 @@ let tray = null;
 let quitting = false;
 let cursorWindow = null;
 
+// Shown while a window can't reach the hosted app, instead of Chromium's error
+// page. Dark to match the overlay; it just tells the user we're retrying.
+const RECONNECTING_HTML =
+  "data:text/html," +
+  encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{height:100%;margin:0;background:#0c0c0e;color:#8b8b91;
+      font-family:system-ui,"Segoe UI",sans-serif;display:flex;align-items:center;
+      justify-content:center}
+    .box{text-align:center;padding:24px}
+    .dot{width:8px;height:8px;border-radius:50%;background:#8b8b91;display:inline-block;
+      animation:p 1.2s ease-in-out infinite}
+    @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
+    h1{font-size:15px;color:#f5f5f5;margin:12px 0 6px;font-weight:600}
+    p{font-size:12px;margin:0}
+  </style></head><body><div class="box"><span class="dot"></span>
+    <h1>Reconnecting to Cluely…</h1><p>Check your internet — this retries on its own.</p>
+  </div></body></html>`);
+
+/**
+ * Load a window's URL and, if it fails (network not ready at boot, a transient
+ * blip, a Vercel cold start), show a reconnecting page and keep retrying with
+ * backoff until it succeeds — instead of getting stuck on "page couldn't load".
+ */
+function loadWithRetry(win, url) {
+  let delay = 1500;
+  let timer = null;
+
+  const attempt = () => {
+    if (!win || win.isDestroyed()) return;
+    win.loadURL(url).catch(() => {}); // rejection is also surfaced via did-fail-load
+  };
+
+  win.webContents.on("did-fail-load", (_e, errorCode, _desc, _validatedURL, isMainFrame) => {
+    // -3 is ERR_ABORTED (a superseded navigation) — not a real failure.
+    if (!isMainFrame || errorCode === -3 || win.isDestroyed()) return;
+    if (win.webContents.getURL() !== RECONNECTING_HTML) {
+      win.loadURL(RECONNECTING_HTML).catch(() => {});
+    }
+    clearTimeout(timer);
+    timer = setTimeout(attempt, delay);
+    delay = Math.min(delay * 1.6, 15000); // back off, capped at 15s
+  });
+
+  win.webContents.on("did-finish-load", () => {
+    if (win.isDestroyed()) return;
+    if (win.webContents.getURL().startsWith(url.split("?")[0])) delay = 1500; // reset on success
+  });
+
+  attempt();
+}
+
 /** Runtime state the renderer can read and toggle. */
 const state = {
   contentProtection: false, // opt-in, see setContentProtection below
@@ -62,7 +113,7 @@ function createOverlay() {
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   overlay.once("ready-to-show", () => overlay.show());
-  overlay.loadURL(`${APP_URL}/overlay`);
+  loadWithRetry(overlay, `${APP_URL}/overlay`);
 
   // Keep navigation inside the app; send outside links to the real browser.
   overlay.webContents.setWindowOpenHandler(({ url }) => {
@@ -114,7 +165,7 @@ function createCursorWindow() {
   cursorWindow.setAlwaysOnTop(true, "screen-saver");
   cursorWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   cursorWindow.setIgnoreMouseEvents(true, { forward: true }); // clicks pass through
-  cursorWindow.loadURL(`${APP_URL}/guide-cursor`);
+  loadWithRetry(cursorWindow, `${APP_URL}/guide-cursor`);
 
   cursorWindow.on("closed", () => {
     cursorWindow = null;
