@@ -7,6 +7,36 @@ import { clampPoint, isSafeLaunchTarget, parseImageDataUrl } from "@/lib/parse";
 export const maxDuration = 60;
 
 /**
+ * The user's uploaded context, briefly cached per warm instance.
+ *
+ * This query sits directly in front of the Claude call on every single ask, so
+ * its round trip is dead time the user waits through before the first token.
+ * Context files change on the order of days; asks come seconds apart. Ten
+ * seconds is short enough that a file uploaded mid-session shows up on the next
+ * question or two, and long enough to cover a burst of asks.
+ */
+const CONTEXT_TTL_MS = 10_000;
+const contextCache = new Map<string, { at: number; value: string }>();
+
+async function contextFor(userId: string): Promise<string> {
+  const hit = contextCache.get(userId);
+  if (hit && Date.now() - hit.at < CONTEXT_TTL_MS) return hit.value;
+
+  const files = await sql`
+    select name, content from context_files where user_id = ${userId} order by created_at desc limit 5
+  `;
+  const value = files
+    .map((f) => `--- ${f.name} ---\n${String(f.content).slice(0, 8000)}`)
+    .join("\n\n");
+
+  // One entry per user, and an instance only ever serves a handful — but bound
+  // it anyway so a long-lived instance cannot grow without limit.
+  if (contextCache.size > 64) contextCache.clear();
+  contextCache.set(userId, { at: Date.now(), value });
+  return value;
+}
+
+/**
  * The dispatcher. One request decides what the user wanted instead of making
  * them pick a mode first: Claude either streams a text answer (the common
  * case) or calls a tool to start a walkthrough or launch something.
@@ -27,12 +57,7 @@ export async function POST(req: Request) {
 
   const { sessionId, question, transcript, image } = await req.json();
 
-  const files = await sql`
-    select name, content from context_files where user_id = ${user.id} order by created_at desc limit 5
-  `;
-  const context = files
-    .map((f) => `--- ${f.name} ---\n${String(f.content).slice(0, 8000)}`)
-    .join("\n\n");
+  const context = await contextFor(user.id);
 
   const tail = String(transcript ?? "").slice(-6000);
   const ask = String(question ?? "").trim();

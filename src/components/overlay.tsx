@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Download,
@@ -102,9 +102,19 @@ export function Overlay() {
     const bridge = getDesktop();
     if (!el || !bridge?.resize) return;
     let raf = 0;
+    let sent = -1;
     const report = () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => bridge.resize(el.offsetHeight));
+      raf = requestAnimationFrame(() => {
+        // Each call is an IPC hop plus a setBounds on a transparent,
+        // always-on-top window — expensive enough that firing it for a height
+        // we already asked for is worth avoiding. A streaming answer trips the
+        // observer constantly while the height sits still.
+        const height = el.offsetHeight;
+        if (height === sent) return;
+        sent = height;
+        bridge.resize(height);
+      });
     };
     const ro = new ResizeObserver(report);
     ro.observe(el);
@@ -234,15 +244,19 @@ function Thread({
           </div>
         )}
 
+        {/* The handlers are passed by identity, not as fresh closures, so a
+            memoized card only re-renders when its own entry changes. During a
+            streaming answer that is one card instead of the whole thread. */}
         {live.entries.map((entry, i) => (
           <EntryCard
             key={i}
+            index={i}
             entry={entry}
-            onNext={() => void live.advanceGuide(i)}
-            onClickStep={() => void live.clickStep(i)}
-            onRunRest={() => void live.runRest(i)}
-            onConfirm={() => live.confirmOpen(i)}
-            onDismiss={() => live.dismiss(i)}
+            onNext={live.advanceGuide}
+            onClickStep={live.clickStep}
+            onRunRest={live.runRest}
+            onConfirm={live.confirmOpen}
+            onDismiss={live.dismiss}
           />
         ))}
 
@@ -272,21 +286,29 @@ function Thread({
   );
 }
 
-function EntryCard({
+const EntryCard = memo(function EntryCard({
+  index,
   entry,
-  onNext,
-  onClickStep,
-  onRunRest,
-  onConfirm,
-  onDismiss,
+  onNext: next,
+  onClickStep: clickStep,
+  onRunRest: runRest,
+  onConfirm: confirm,
+  onDismiss: dismiss,
 }: {
+  index: number;
   entry: Entry;
-  onNext: () => void;
-  onClickStep: () => void;
-  onRunRest: () => void;
-  onConfirm: () => void;
-  onDismiss: () => void;
+  onNext: (i: number) => void;
+  onClickStep: (i: number) => void;
+  onRunRest: (i: number) => void;
+  onConfirm: (i: number) => void;
+  onDismiss: (i: number) => void;
 }) {
+  const onNext = () => next(index);
+  const onClickStep = () => clickStep(index);
+  const onRunRest = () => runRest(index);
+  const onConfirm = () => confirm(index);
+  const onDismiss = () => dismiss(index);
+
   if (entry.kind === "text") {
     return (
       <div className="answer-card p-3.5">
@@ -440,7 +462,7 @@ function EntryCard({
       )}
     </div>
   );
-}
+});
 
 // ── Shared bits ──────────────────────────────────────────────────────────────
 
