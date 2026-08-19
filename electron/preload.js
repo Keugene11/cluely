@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld("cluely", {
 
   getState: () => ipcRenderer.invoke("cluely:get-state"),
 
+  /** Ask the bar window to resize to fit content of the given pixel height. */
+  resize: (height) => ipcRenderer.invoke("cluely:resize", height),
+
   /** Screenshot of the primary display as a PNG data URL, or null. */
   captureScreen: () => ipcRenderer.invoke("cluely:capture-screen"),
 

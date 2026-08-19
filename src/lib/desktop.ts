@@ -16,6 +16,7 @@ export type DesktopBridge = {
   isDesktop: true;
   getState: () => Promise<DesktopState>;
   captureScreen: () => Promise<string | null>;
+  resize: (height: number) => Promise<void>;
   point: (target: { x: number; y: number; label: string }) => Promise<void>;
   clearPoint: () => Promise<void>;
   onPointTo: (

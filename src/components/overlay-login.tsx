@@ -35,31 +35,27 @@ export function OverlayLogin() {
   }
 
   return (
-    <div
-      className="glass glass-edge relative flex h-screen flex-col overflow-hidden rounded-[18px]"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="overlay-glow" />
-      <header className="relative flex items-center justify-between gap-2 border-b border-white/8 px-4 py-2.5 text-sm font-semibold tracking-tight">
-        <span className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/10">
-            <Sparkles className="h-3.5 w-3.5" />
+    <div className="w-full px-3 pt-3 pb-3" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+      <div className="cbar" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+        <span className="flex items-center gap-2.5 pl-1 text-sm font-semibold tracking-tight">
+          <span className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-gradient-to-br from-indigo-400/30 to-fuchsia-400/20 ring-1 ring-white/10">
+            <Sparkles className="h-4 w-4" />
           </span>
           Cluely
         </span>
         <button
           onClick={() => getDesktop()?.quit()}
-          className="press rounded-lg p-1.5 text-muted hover:bg-white/10 hover:text-foreground"
+          className="press flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-white/8 hover:text-foreground"
           aria-label="Quit"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" />
         </button>
-      </header>
+      </div>
 
       <form
         onSubmit={onSubmit}
-        className="flex flex-1 flex-col justify-center gap-2.5 px-4"
+        className="cpanel mt-2 flex flex-col gap-2.5 p-4"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <p className="text-sm text-muted">

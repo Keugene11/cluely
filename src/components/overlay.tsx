@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ArrowUp,
   Compass,
-  CornerDownLeft,
   Download,
   Eye,
   EyeOff,
@@ -12,12 +12,8 @@ import {
   Mic,
   MicOff,
   MousePointerClick,
-  Radio,
   ScanEye,
   Sparkles,
-  Square,
-  User,
-  Users,
   Volume2,
   VolumeX,
   X,
@@ -27,9 +23,8 @@ import { useGuide } from "@/hooks/use-guide";
 import { getDesktop, type DesktopBridge, type UpdateState } from "@/lib/desktop";
 import { AnswerBody } from "@/components/answer-body";
 
-/** Drag the whole window by its header, the way a frameless app does. */
-const dragStyle = { WebkitAppRegion: "drag" } as React.CSSProperties;
-const noDragStyle = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 type Mode = "assist" | "guide";
 
@@ -38,579 +33,381 @@ export function Overlay() {
   const [desktop, setDesktop] = useState<DesktopBridge | null>(null);
   const [mode, setMode] = useState<Mode>("assist");
   const [voiceOn, setVoiceOn] = useState(true);
+  const [open, setOpen] = useState(false);
   const guide = useGuide(voiceOn);
 
   const [hidden, setHidden] = useState(false);
   const [clickThrough, setClickThrough] = useState(false);
-  const [platform, setPlatform] = useState("");
   const [update, setUpdate] = useState<UpdateState | null>(null);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  const startedRef = useRef(false);
+
+  // Bridge wiring.
   useEffect(() => {
     const bridge = getDesktop();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDesktop(bridge);
     if (!bridge) return;
-
-    void bridge.getState().then((state) => {
-      setHidden(state.contentProtection);
-      setClickThrough(state.clickThrough);
-      setPlatform(state.platform);
+    void bridge.getState().then((s) => {
+      setHidden(s.contentProtection);
+      setClickThrough(s.clickThrough);
     });
     void bridge.getUpdateState().then(setUpdate);
-
-    const offState = bridge.onState((state) => {
-      setHidden(state.contentProtection);
-      setClickThrough(state.clickThrough);
+    const offState = bridge.onState((s) => {
+      setHidden(s.contentProtection);
+      setClickThrough(s.clickThrough);
     });
     const offUpdate = bridge.onUpdate(setUpdate);
+    const offVoice = bridge.onVoiceGuide(() => {
+      setMode("guide");
+      setOpen(true);
+      guide.listen();
+    });
     return () => {
       offState();
       offUpdate();
+      offVoice();
+    };
+  }, [guide]);
+
+  // Auto-resize the window to hug the content (Cluely's bar-that-expands).
+  useEffect(() => {
+    const el = rootRef.current;
+    const bridge = getDesktop();
+    if (!el || !bridge?.resize) return;
+    let raf = 0;
+    const report = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => bridge.resize(el.offsetHeight));
+    };
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    report();
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
     };
   }, []);
 
-  // The voice-guide hotkey switches to Guide mode and starts listening.
+  // Assist needs a session for the transcript + hotkey to work — create one
+  // silently the first time Assist is used, no "name your call" screen.
+  useEffect(() => {
+    if (mode === "assist" && !live.sessionId && !live.starting && !startedRef.current) {
+      startedRef.current = true;
+      void live.start("Live session", "meeting");
+    }
+  }, [mode, live]);
+
+  // Global hotkey (Ctrl+Enter) → assist, and open the panel.
   useEffect(() => {
     if (!desktop) return;
-    return desktop.onVoiceGuide(() => {
-      setMode("guide");
-      guide.listen();
+    return desktop.onAssist(() => {
+      setMode("assist");
+      setOpen(true);
+      void live.ask();
     });
-  }, [desktop, guide]);
+  }, [desktop, live]);
 
-  const canSeeScreen = Boolean(desktop);
+  const askAssist = useCallback(() => {
+    setOpen(true);
+    void live.ask();
+  }, [live]);
 
-  const chrome = {
-    desktop,
-    hidden,
-    clickThrough,
-    platform,
-    update,
-    voiceOn,
-    onToggleVoice: () => setVoiceOn((v) => !v),
-    mode,
-    setMode,
-    onClose: () => desktop?.quit(),
-    onToggleHidden: async () => {
-      if (!desktop) return;
-      setHidden(await desktop.setContentProtection(!hidden));
-    },
-    onToggleClickThrough: async () => {
-      if (!desktop) return;
-      setClickThrough(await desktop.setClickThrough(!clickThrough));
-    },
-  };
+  const hasContent =
+    (mode === "assist" && (live.assists.length > 0 || live.capturing || live.micError)) ||
+    (mode === "guide" && (guide.result != null || guide.working || guide.error != null));
 
-  if (mode === "guide") {
-    return (
-      <Shell {...chrome} onInstall={() => desktop?.installUpdate()}>
-        <GuideBody guide={guide} canSeeScreen={canSeeScreen} />
-      </Shell>
-    );
-  }
+  const panelOpen = open || hasContent;
 
   return (
-    <Shell
-      {...chrome}
-      onInstall={() => desktop?.installUpdate()}
-      status={
-        live.sessionId ? (
-          <span className="flex items-center gap-1.5">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                live.listening ? "live-dot bg-red-500" : "bg-muted"
-              }`}
-            />
-            {live.listening ? "listening" : "paused"}
+    <div ref={rootRef} className="w-full px-3 pt-3 pb-3" style={{ background: "transparent" }}>
+      {/* The bar */}
+      <div className="cbar" style={drag}>
+        <div className="flex items-center gap-2.5 pl-1" style={noDrag}>
+          <span className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-gradient-to-br from-indigo-400/30 to-fuchsia-400/20 ring-1 ring-white/10">
+            <Sparkles className="h-4 w-4" />
           </span>
-        ) : undefined
-      }
-    >
-      <AssistBody live={live} canSeeScreen={canSeeScreen} />
-    </Shell>
+          {mode === "assist" && live.sessionId && (
+            <span className="hidden items-center gap-1.5 text-xs text-muted sm:flex">
+              <span className={`h-1.5 w-1.5 rounded-full ${live.listening ? "live-dot bg-red-500" : "bg-muted"}`} />
+              {live.listening ? "listening" : "paused"}
+            </span>
+          )}
+        </div>
+
+        {/* Mode segmented control */}
+        <div className="flex items-center gap-0.5 rounded-full bg-white/5 p-0.5" style={noDrag}>
+          <Seg active={mode === "assist"} onClick={() => setMode("assist")} icon={MessageSquare}>
+            Assist
+          </Seg>
+          <Seg active={mode === "guide"} onClick={() => setMode("guide")} icon={Compass}>
+            Guide
+          </Seg>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1" style={noDrag}>
+          {mode === "assist" ? (
+            <button onClick={askAssist} className="cbtn-primary">
+              <span className="hidden sm:inline">Ask</span>
+              <kbd className="kbd-mini">⌘↵</kbd>
+            </button>
+          ) : (
+            <button onClick={() => setOpen(true)} className="cbtn-primary">
+              <Compass className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Guide me</span>
+            </button>
+          )}
+
+          <div className="mx-0.5 h-5 w-px bg-white/10" />
+
+          <IconBtn active={voiceOn} onClick={() => setVoiceOn((v) => !v)} title={voiceOn ? "Voice on" : "Muted"}>
+            {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </IconBtn>
+
+          {desktop && (
+            <>
+              <IconBtn
+                active={clickThrough}
+                onClick={async () => setClickThrough(await desktop.setClickThrough(!clickThrough))}
+                title="Click-through (Ctrl+Shift+H)"
+              >
+                <MousePointerClick className="h-4 w-4" />
+              </IconBtn>
+              <IconBtn
+                active={hidden}
+                onClick={async () => setHidden(await desktop.setContentProtection(!hidden))}
+                title={hidden ? "Hidden from capture" : "Visible in capture"}
+              >
+                {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </IconBtn>
+            </>
+          )}
+
+          <IconBtn onClick={() => desktop?.quit()} title="Quit">
+            <X className="h-4 w-4" />
+          </IconBtn>
+        </div>
+      </div>
+
+      {/* Update banner */}
+      {update?.status === "ready" && (
+        <div className="cpanel mt-2 flex items-center justify-between px-4 py-2 text-xs" style={noDrag}>
+          <span className="flex items-center gap-1.5">
+            <Download className="h-3.5 w-3.5" /> Update {update.version} ready
+          </span>
+          <button onClick={() => desktop?.installUpdate()} className="cbtn-primary">
+            Restart
+          </button>
+        </div>
+      )}
+
+      {/* The expanding panel */}
+      {panelOpen && (
+        <div className="cpanel rise mt-2 overflow-hidden" style={noDrag}>
+          {mode === "assist" ? (
+            <AssistPanel live={live} onAsk={askAssist} hasDesktop={Boolean(desktop)} />
+          ) : (
+            <GuidePanel guide={guide} hasDesktop={Boolean(desktop)} />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-// ── Guide mode ───────────────────────────────────────────────────────────────
+// ── Assist panel ─────────────────────────────────────────────────────────────
 
-function GuideBody({
-  guide,
-  canSeeScreen,
+function AssistPanel({
+  live,
+  onAsk,
+  hasDesktop,
 }: {
-  guide: ReturnType<typeof useGuide>;
-  canSeeScreen: boolean;
+  live: ReturnType<typeof useLiveSession>;
+  onAsk: () => void;
+  hasDesktop: boolean;
 }) {
-  const [question, setQuestion] = useState("");
-
-  function ask() {
-    const q = question.trim();
-    if (!q) return;
-    setQuestion("");
-    void guide.guide(q);
-  }
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [live.assists, live.capturing]);
 
   return (
     <>
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3.5" style={noDragStyle}>
-        {!canSeeScreen && (
-          <p className="answer-card p-3 text-xs leading-relaxed text-amber-300/90">
-            Guide mode reads your screen and points at what to click — it only works in the desktop
-            app.
+      <div className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
+        {live.micError && <p className="notice">{live.micError}</p>}
+
+        {live.assists.length === 0 && !live.capturing && !live.micError && (
+          <p className="px-1 py-6 text-center text-sm text-muted">
+            Ask anything, or press <kbd className="kbd-mini">⌘↵</kbd> and I&rsquo;ll answer what&rsquo;s on
+            your screen{hasDesktop ? "" : ""}.
           </p>
         )}
 
-        {guide.error && (
-          <p className="answer-card p-3 text-xs leading-relaxed text-amber-300/90">{guide.error}</p>
+        {live.assists.map((a, i) => (
+          <div key={i} className="answer-card p-3.5">
+            {a.question && (
+              <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">{a.question}</p>
+            )}
+            {a.answer ? <AnswerBody>{a.answer}</AnswerBody> : <p className="text-[13px] text-muted">thinking…</p>}
+            {!a.done && a.answer && <span className="typing-caret" />}
+          </div>
+        ))}
+
+        {live.capturing && (
+          <div className="reading-chip">
+            <ScanEye className="h-3.5 w-3.5" /> Reading your screen…
+          </div>
         )}
+        <div ref={endRef} />
+      </div>
+
+      <InputRow
+        value={live.question}
+        onChange={live.setQuestion}
+        onSubmit={onAsk}
+        busy={live.asking}
+        placeholder="Ask anything…"
+      />
+    </>
+  );
+}
+
+// ── Guide panel ──────────────────────────────────────────────────────────────
+
+function GuidePanel({
+  guide,
+  hasDesktop,
+}: {
+  guide: ReturnType<typeof useGuide>;
+  hasDesktop: boolean;
+}) {
+  const [q, setQ] = useState("");
+  const submit = () => {
+    const t = q.trim();
+    if (!t) return;
+    setQ("");
+    void guide.guide(t);
+  };
+
+  return (
+    <>
+      <div className="max-h-[460px] space-y-3 overflow-y-auto px-4 py-3.5">
+        {!hasDesktop && <p className="notice">Guide mode reads your screen — desktop app only.</p>}
+        {guide.error && <p className="notice">{guide.error}</p>}
 
         {!guide.result && !guide.working && !guide.error && (
-          <div className="space-y-2 text-sm text-muted">
-            <p>
-              Ask how to do something in the app that&rsquo;s open — video editing, design, a
-              spreadsheet. I&rsquo;ll read your screen, talk you through it, and point at the button.
-            </p>
-            <p className="text-xs text-muted/80">
-              Try: &ldquo;how do I add a transition between two clips?&rdquo;
-            </p>
-          </div>
+          <p className="px-1 py-6 text-center text-sm text-muted">
+            Ask how to do something in the app that&rsquo;s open. I&rsquo;ll read your screen and point at
+            the button.
+          </p>
         )}
 
         {guide.working && (
-          <div className="reading-chip flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-foreground/80">
+          <div className="reading-chip">
             <ScanEye className="h-3.5 w-3.5" /> Looking at your screen…
           </div>
         )}
 
         {guide.result && (
-          <div className="answer-card rise space-y-3 p-3.5">
+          <div className="answer-card space-y-3 p-3.5">
             <p className="text-[13px] leading-relaxed">{guide.result.say}</p>
-
             {guide.result.point && (
-              <p className="flex items-center gap-1.5 text-xs text-muted">
+              <p className="flex items-center gap-1.5 text-xs text-indigo-300">
                 <MousePointerClick className="h-3.5 w-3.5" /> Pointing at{" "}
                 <span className="text-foreground">{guide.result.point.label}</span>
               </p>
             )}
-
             {guide.result.steps?.length > 0 && (
               <ol className="space-y-1.5 text-[13px]">
-                {guide.result.steps.map((step, i) => (
+                {guide.result.steps.map((s, i) => (
                   <li key={i} className="flex gap-2.5 leading-relaxed">
-                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] text-muted">
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-400/20 text-[10px] text-indigo-200">
                       {i + 1}
                     </span>
-                    <span>{step}</span>
+                    <span>{s}</span>
                   </li>
                 ))}
               </ol>
             )}
-
-            <button
-              onClick={guide.clear}
-              className="press text-xs text-muted hover:text-foreground"
-            >
+            <button onClick={guide.clear} className="text-xs text-muted hover:text-foreground">
               Clear the pointer
             </button>
           </div>
         )}
       </div>
 
-      <div className="space-y-2.5 border-t border-white/8 p-3" style={noDragStyle}>
-        <div className="flex items-end gap-2">
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
-                ask();
-              }
-            }}
-            rows={1}
-            placeholder="How do I…?"
-            className="flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
-          />
-          <button
-            onClick={guide.listening ? guide.stopListening : guide.listen}
-            className={`press flex h-[42px] w-[42px] items-center justify-center rounded-xl border ${
-              guide.listening
-                ? "border-red-500/50 bg-red-500/15 text-red-300"
-                : "border-white/10 bg-white/5 text-muted hover:text-foreground"
-            }`}
-            title="Ask by voice (Ctrl+Shift+G)"
-          >
-            {guide.listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          </button>
-          <button
-            onClick={ask}
-            disabled={guide.working}
-            className="press flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-foreground text-background disabled:opacity-60"
-            aria-label="Ask"
-          >
-            {guide.working ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CornerDownLeft className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-        {guide.listening && (
-          <p className="text-center text-[11px] text-red-300">Listening — ask your question…</p>
-        )}
-      </div>
+      <InputRow
+        value={q}
+        onChange={setQ}
+        onSubmit={submit}
+        busy={guide.working}
+        placeholder="How do I…?"
+        mic={{ listening: guide.listening, toggle: guide.listening ? guide.stopListening : guide.listen }}
+      />
     </>
   );
 }
 
-// ── Assist mode ──────────────────────────────────────────────────────────────
+// ── Shared bits ──────────────────────────────────────────────────────────────
 
-function AssistBody({
-  live,
-  canSeeScreen,
+function InputRow({
+  value,
+  onChange,
+  onSubmit,
+  busy,
+  placeholder,
+  mic,
 }: {
-  live: ReturnType<typeof useLiveSession>;
-  canSeeScreen: boolean;
-}) {
-  const [title, setTitle] = useState("");
-  const [ended, setEnded] = useState(false);
-  const answersEndRef = useRef<HTMLDivElement>(null);
-
-  const desktop = getDesktop();
-
-  // Global hotkey (Ctrl+Enter) arrives from the main process.
-  useEffect(() => {
-    if (!desktop) return;
-    return desktop.onAssist(() => void live.ask());
-  }, [desktop, live]);
-
-  // In-window hotkey too.
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        void live.ask();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [live]);
-
-  useEffect(() => {
-    answersEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [live.assists, live.capturing]);
-
-  if (!live.sessionId) {
-    return (
-      <div className="flex flex-1 flex-col justify-center gap-3 px-4 pb-5" style={noDragStyle}>
-        <p className="text-sm leading-relaxed text-muted">
-          Name what you&rsquo;re doing. Cluely listens, reads your screen, and answers on{" "}
-          <kbd>Ctrl</kbd> + <kbd>Enter</kbd>.
-        </p>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Pricing call · coding round · study session"
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
-        />
-        <button
-          onClick={() => live.start(title, "meeting")}
-          disabled={live.starting}
-          className="press flex w-full items-center justify-center gap-2 rounded-xl bg-foreground py-2.5 text-sm font-medium text-background disabled:opacity-60"
-        >
-          {live.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-          Start
-        </button>
-        {canSeeScreen && (
-          <p className="flex items-center justify-center gap-1.5 text-xs text-muted">
-            <ScanEye className="h-3.5 w-3.5" /> Screen reading is on for this device
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3.5" style={noDragStyle}>
-        {live.micError && (
-          <p className="answer-card p-3 text-xs leading-relaxed text-amber-300/90">
-            {live.micError}
-          </p>
-        )}
-
-        {live.assists.length === 0 && !live.micError && (
-          <div className="space-y-2.5">
-            <p className="text-sm leading-relaxed text-muted">
-              Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> and I answer what&rsquo;s on your screen or
-              what was just asked of you.
-            </p>
-            {canSeeScreen && (
-              <p className="flex items-center gap-1.5 text-xs text-muted/80">
-                <ScanEye className="h-3.5 w-3.5" /> I can see your screen when you ask.
-              </p>
-            )}
-          </div>
-        )}
-
-        {live.assists.map((assist, i) => (
-          <div key={i} className="answer-card rise p-3.5">
-            {assist.question && (
-              <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">
-                {assist.question}
-              </p>
-            )}
-            {assist.answer ? (
-              <AnswerBody>{assist.answer}</AnswerBody>
-            ) : (
-              <p className="text-[13px] text-muted">thinking…</p>
-            )}
-            {!assist.done && assist.answer && (
-              <span className="mt-1 inline-block h-3.5 w-1.5 translate-y-0.5 bg-foreground/70" />
-            )}
-          </div>
-        ))}
-
-        {live.capturing && (
-          <div className="reading-chip flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-foreground/80">
-            <ScanEye className="h-3.5 w-3.5" /> Reading your screen…
-          </div>
-        )}
-
-        <div ref={answersEndRef} />
-      </div>
-
-      <div className="space-y-2.5 border-t border-white/8 p-3" style={noDragStyle}>
-        <div className="flex items-end gap-2">
-          <textarea
-            value={live.question}
-            onChange={(e) => live.setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
-                void live.ask();
-              }
-            }}
-            rows={1}
-            placeholder="Ask anything, or just hit Enter…"
-            className="flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
-          />
-          <button
-            onClick={live.ask}
-            disabled={live.asking}
-            className="press flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-foreground text-background disabled:opacity-60"
-            aria-label="Ask"
-          >
-            {live.asking ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CornerDownLeft className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <Pill onClick={() => live.setSpeaker(live.speaker === "them" ? "me" : "them")}>
-              {live.speaker === "me" ? <User className="h-3 w-3" /> : <Users className="h-3 w-3" />}
-              {live.speaker === "me" ? "Me" : "Them"}
-            </Pill>
-            <Pill onClick={live.listening ? live.stopListening : live.startListening}>
-              {live.listening ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
-              {live.listening ? "Pause" : "Resume"}
-            </Pill>
-          </div>
-
-          <button
-            onClick={async () => {
-              await live.end();
-              setEnded(true);
-            }}
-            disabled={live.ending || ended}
-            className="press flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1 text-[11px] font-medium text-background disabled:opacity-60"
-          >
-            {live.ending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
-            {ended ? "Notes in app" : "End"}
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── Shared chrome ────────────────────────────────────────────────────────────
-
-function Pill({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="press flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-muted hover:border-white/25 hover:text-foreground"
-    >
-      {children}
-    </button>
-  );
-}
-
-function UpdateBanner({ update, onInstall }: { update: UpdateState; onInstall: () => void }) {
-  if (update.status === "ready") {
-    return (
-      <div
-        className="flex items-center justify-between gap-2 border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px]"
-        style={noDragStyle}
-      >
-        <span className="flex items-center gap-1.5 text-foreground">
-          <Download className="h-3.5 w-3.5" />
-          Update {update.version} ready
-        </span>
-        <button
-          onClick={onInstall}
-          className="press rounded-full bg-foreground px-2.5 py-0.5 font-medium text-background"
-        >
-          Restart
-        </button>
-      </div>
-    );
-  }
-  if (update.status === "downloading") {
-    return (
-      <p className="border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px] text-muted">
-        Downloading update… {update.progress}%
-      </p>
-    );
-  }
-  return null;
-}
-
-function Shell({
-  children,
-  desktop,
-  onClose,
-  onInstall,
-  status,
-  mode,
-  setMode,
-  voiceOn,
-  onToggleVoice,
-  update,
-  hidden,
-  clickThrough,
-  platform,
-  onToggleHidden,
-  onToggleClickThrough,
-}: {
-  children: React.ReactNode;
-  desktop: DesktopBridge | null;
-  onClose: () => void;
-  onInstall: () => void;
-  status?: React.ReactNode;
-  mode: Mode;
-  setMode: (m: Mode) => void;
-  voiceOn: boolean;
-  onToggleVoice: () => void;
-  update: UpdateState | null;
-  hidden: boolean;
-  clickThrough: boolean;
-  platform: string;
-  onToggleHidden: () => void;
-  onToggleClickThrough: () => void;
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  busy: boolean;
+  placeholder: string;
+  mic?: { listening: boolean; toggle: () => void };
 }) {
   return (
-    <div className="glass glass-edge relative flex h-screen flex-col overflow-hidden rounded-[18px]">
-      <div className="overlay-glow" />
-
-      <header
-        className="relative flex items-center justify-between gap-2 border-b border-white/8 px-4 py-2.5"
-        style={dragStyle}
+    <div className="flex items-end gap-2 border-t border-white/8 p-2.5">
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        rows={1}
+        placeholder={placeholder}
+        className="flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/20"
+      />
+      {mic && (
+        <button
+          onClick={mic.toggle}
+          className={`press flex h-[40px] w-[40px] items-center justify-center rounded-xl border ${
+            mic.listening
+              ? "border-red-500/50 bg-red-500/15 text-red-300"
+              : "border-white/10 bg-white/[0.04] text-muted hover:text-foreground"
+          }`}
+          title="Ask by voice (Ctrl+Shift+G)"
+        >
+          {mic.listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </button>
+      )}
+      <button
+        onClick={onSubmit}
+        disabled={busy}
+        className="press flex h-[40px] w-[40px] items-center justify-center rounded-xl bg-white text-black disabled:opacity-60"
+        aria-label="Send"
       >
-        <span className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/10">
-            <Sparkles className="h-3.5 w-3.5" />
-          </span>
-          Cluely
-          {status && <span className="text-[11px] font-normal text-muted">{status}</span>}
-        </span>
-
-        <div className="flex items-center gap-1" style={noDragStyle}>
-          <button
-            onClick={onToggleVoice}
-            title={voiceOn ? "Voice on — click to mute" : "Voice off — click to unmute"}
-            className={`press rounded-lg p-1.5 ${
-              voiceOn ? "bg-white/10 text-foreground" : "text-muted hover:text-foreground"
-            }`}
-          >
-            {voiceOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
-          </button>
-
-          {desktop && (
-            <>
-              <button
-                onClick={onToggleClickThrough}
-                title={
-                  clickThrough
-                    ? "Clicks pass through (Ctrl+Shift+H)"
-                    : "Clicks land on this panel (Ctrl+Shift+H)"
-                }
-                className={`press rounded-lg p-1.5 ${
-                  clickThrough ? "bg-white/10 text-foreground" : "text-muted hover:text-foreground"
-                }`}
-              >
-                <MousePointerClick className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={onToggleHidden}
-                title={
-                  hidden
-                    ? "Hidden from screen capture — click to show"
-                    : "Visible in screen shares — click to hide"
-                }
-                className={`press flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] ${
-                  hidden ? "bg-white/10 text-foreground" : "text-muted hover:text-foreground"
-                }`}
-              >
-                {hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </button>
-            </>
-          )}
-
-          <button
-            onClick={onClose}
-            className="press rounded-lg p-1.5 text-muted hover:bg-white/10 hover:text-foreground"
-            aria-label="Quit"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </header>
-
-      {/* Mode switcher */}
-      <div className="flex gap-1 border-b border-white/8 px-3 py-2" style={noDragStyle}>
-        <ModeTab active={mode === "assist"} onClick={() => setMode("assist")} icon={MessageSquare}>
-          Assist
-        </ModeTab>
-        <ModeTab active={mode === "guide"} onClick={() => setMode("guide")} icon={Compass}>
-          Guide me
-        </ModeTab>
-      </div>
-
-      {update && <UpdateBanner update={update} onInstall={onInstall} />}
-
-      {hidden && platform === "darwin" && (
-        <p className="border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px] text-amber-300/90">
-          macOS: apps capturing via ScreenCaptureKit still see this window.
-        </p>
-      )}
-
-      {!desktop && (
-        <p className="border-b border-white/8 bg-white/5 px-4 py-1.5 text-[11px] text-muted">
-          Running in a browser tab — screen reading, voice, and the cursor need the desktop app.
-        </p>
-      )}
-
-      {children}
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+      </button>
     </div>
   );
 }
 
-function ModeTab({
+function Seg({
   children,
   active,
   onClick,
@@ -624,11 +421,35 @@ function ModeTab({
   return (
     <button
       onClick={onClick}
-      className={`press flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium ${
-        active ? "bg-white/10 text-foreground" : "text-muted hover:text-foreground"
+      className={`press flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition ${
+        active ? "bg-white/12 text-foreground" : "text-muted hover:text-foreground"
       }`}
     >
       <Icon className="h-3.5 w-3.5" />
+      {children}
+    </button>
+  );
+}
+
+function IconBtn({
+  children,
+  onClick,
+  title,
+  active,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title: string;
+  active?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`press flex h-8 w-8 items-center justify-center rounded-lg ${
+        active ? "bg-white/12 text-foreground" : "text-muted hover:bg-white/8 hover:text-foreground"
+      }`}
+    >
       {children}
     </button>
   );

@@ -14,7 +14,11 @@ const {
 const path = require("node:path");
 const { APP_URL } = require("./config");
 const { initUpdater, installUpdate, getUpdateState } = require("./updater");
-const OVERLAY_SIZE = { width: 440, height: 620 };
+// Cluely-style: a slim bar floating top-center that expands downward when it
+// has something to show. The renderer reports its height and we resize to fit.
+const OVERLAY_WIDTH = 720;
+const BAR_HEIGHT = 76;
+const MAX_HEIGHT = 660;
 
 let tray = null;
 let quitting = false;
@@ -84,17 +88,15 @@ function createOverlay() {
   const { workArea } = screen.getPrimaryDisplay();
 
   overlay = new BrowserWindow({
-    width: OVERLAY_SIZE.width,
-    height: OVERLAY_SIZE.height,
-    x: workArea.x + workArea.width - OVERLAY_SIZE.width - 24,
-    y: workArea.y + 24,
+    width: OVERLAY_WIDTH,
+    height: BAR_HEIGHT,
+    x: workArea.x + Math.round((workArea.width - OVERLAY_WIDTH) / 2),
+    y: workArea.y + 14,
     frame: false,
     transparent: true,
     backgroundColor: "#00000000",
     hasShadow: false,
-    resizable: true,
-    minWidth: 340,
-    minHeight: 260,
+    resizable: false,
     // Keep a taskbar entry so there is always an obvious way to close the window.
     skipTaskbar: false,
     closable: true,
@@ -129,6 +131,15 @@ function createOverlay() {
     overlay = null;
     if (process.platform !== "darwin") app.quit();
   });
+}
+
+/** Resize the bar to fit its content, keeping it pinned top-center. */
+function resizeOverlay(contentHeight) {
+  if (!overlay || overlay.isDestroyed()) return;
+  const h = Math.max(BAR_HEIGHT, Math.min(Math.round(contentHeight), MAX_HEIGHT));
+  const [x] = overlay.getPosition();
+  const [, y] = overlay.getPosition();
+  overlay.setBounds({ x, y, width: OVERLAY_WIDTH, height: h });
 }
 
 /**
@@ -296,10 +307,10 @@ function resetPosition() {
   if (!overlay) return;
   const { workArea } = screen.getPrimaryDisplay();
   overlay.setBounds({
-    x: workArea.x + workArea.width - OVERLAY_SIZE.width - 24,
-    y: workArea.y + 24,
-    width: OVERLAY_SIZE.width,
-    height: OVERLAY_SIZE.height,
+    x: workArea.x + Math.round((workArea.width - OVERLAY_WIDTH) / 2),
+    y: workArea.y + 14,
+    width: OVERLAY_WIDTH,
+    height: overlay.getBounds().height,
   });
   if (!overlay.isVisible()) toggleVisible();
 }
@@ -425,6 +436,7 @@ ipcMain.handle("cluely:hide", () => {
   overlay?.hide();
   state.visible = false;
 });
+ipcMain.handle("cluely:resize", (_event, height) => resizeOverlay(height));
 ipcMain.handle("cluely:capture-screen", () => captureScreen());
 ipcMain.handle("cluely:point", (_event, target) => pointCursor(target));
 ipcMain.handle("cluely:clear-point", () => clearCursor());
