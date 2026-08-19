@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useLiveSession } from "@/hooks/use-live-session";
 import { getDesktop, type DesktopBridge, type UpdateState } from "@/lib/desktop";
+import { AnswerBody } from "@/components/answer-body";
 
 /** Drag the whole window by its header, the way a frameless app does. */
 const dragStyle = { WebkitAppRegion: "drag" } as React.CSSProperties;
@@ -186,12 +187,14 @@ export function Overlay() {
                 {assist.question}
               </p>
             )}
-            <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
-              {assist.answer || <span className="text-muted">thinking…</span>}
-              {!assist.done && assist.answer && (
-                <span className="ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 bg-foreground/70" />
-              )}
-            </p>
+            {assist.answer ? (
+              <AnswerBody>{assist.answer}</AnswerBody>
+            ) : (
+              <p className="text-[13px] text-muted">thinking…</p>
+            )}
+            {!assist.done && assist.answer && (
+              <span className="mt-1 inline-block h-3.5 w-1.5 translate-y-0.5 bg-foreground/70" />
+            )}
           </div>
         ))}
 
@@ -227,8 +230,16 @@ export function Overlay() {
           <textarea
             value={live.question}
             onChange={(e) => live.setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter makes a newline. Ctrl+Enter is left to
+              // the global hotkey so it isn't handled twice.
+              if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                void live.ask();
+              }
+            }}
             rows={1}
-            placeholder="Ask anything, or just hit the hotkey…"
+            placeholder="Ask anything, or just hit Enter…"
             className="flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/25"
           />
           <button

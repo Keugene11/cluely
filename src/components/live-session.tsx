@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { useLiveSession } from "@/hooks/use-live-session";
+import { AnswerBody } from "@/components/answer-body";
 
 export function LiveSession() {
   const router = useRouter();
@@ -216,12 +217,14 @@ export function LiveSession() {
                   {assist.question}
                 </p>
               )}
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                {assist.answer || <span className="text-muted">thinking…</span>}
-                {!assist.done && assist.answer && (
-                  <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 bg-foreground/70" />
-                )}
-              </p>
+              {assist.answer ? (
+                <AnswerBody>{assist.answer}</AnswerBody>
+              ) : (
+                <p className="text-sm text-muted">thinking…</p>
+              )}
+              {!assist.done && assist.answer && (
+                <span className="mt-1 inline-block h-4 w-1.5 translate-y-0.5 bg-foreground/70" />
+              )}
             </div>
           ))}
         </div>
@@ -231,8 +234,14 @@ export function LiveSession() {
             <textarea
               value={live.question}
               onChange={(e) => live.setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                  e.preventDefault();
+                  void live.ask();
+                }
+              }}
               rows={2}
-              placeholder="Optional: ask something specific…"
+              placeholder="Ask something specific, or just hit Enter…"
               className="flex-1 resize-none rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm outline-none placeholder:text-muted focus:border-foreground/40"
             />
             <button

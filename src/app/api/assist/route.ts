@@ -61,9 +61,10 @@ export async function POST(req: Request) {
   try {
     stream = anthropic().messages.stream({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: 4096, // room for a full, explained coding solution
       system: LIVE_SYSTEM,
-      output_config: { effort: "low" },
+      thinking: { type: "adaptive" }, // reason through coding problems before answering
+      output_config: { effort: "medium" },
       messages: [{ role: "user", content }],
     });
   } catch {
