@@ -23,10 +23,17 @@ export function LiveSession() {
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("meeting");
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const answerEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [live.lines, live.interim]);
+
+  // The thread follows the newest message the same way the transcript does —
+  // sending something and having it land off-screen is not a chat.
+  useEffect(() => {
+    answerEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [live.entries]);
 
   // In-page hotkey. The desktop overlay registers this globally instead.
   useEffect(() => {
@@ -207,37 +214,42 @@ export function LiveSession() {
             </div>
           )}
 
-          {live.entries.map((entry, i) => (
-            <div
-              key={i}
-              className="rise rounded-xl border border-line bg-surface/80 p-4 backdrop-blur"
-            >
-              {entry.question && (
-                <p className="mb-2 text-xs uppercase tracking-widest text-muted">{entry.question}</p>
-              )}
-              {/* Walkthroughs and launches need a screen to read and a shell to
-                  launch into, so on the web they only ever arrive as text. */}
-              {entry.kind === "text" ? (
-                <>
-                  {entry.answer ? (
-                    <AnswerBody>{entry.answer}</AnswerBody>
+          {/* Your message on the right, the reply on the left, one per row —
+              the same thread the desktop overlay shows. */}
+          {live.entries.map((entry, i) =>
+            entry.kind === "you" ? (
+              <div key={i} className="rise flex justify-end pl-10">
+                <p className="user-bubble max-w-[85%]">{entry.text}</p>
+              </div>
+            ) : (
+              <div key={i} className="rise flex justify-start pr-8">
+                <div className="answer-card min-w-0 max-w-full p-4 backdrop-blur">
+                  {/* Walkthroughs and launches need a screen to read and a shell
+                      to launch into, so on the web they only ever arrive as text. */}
+                  {entry.kind === "text" ? (
+                    <>
+                      {entry.answer ? (
+                        <AnswerBody>{entry.answer}</AnswerBody>
+                      ) : (
+                        <p className="text-sm text-muted">thinking…</p>
+                      )}
+                      {!entry.done && entry.answer && (
+                        <span className="mt-1 inline-block h-4 w-1.5 translate-y-0.5 bg-foreground/70" />
+                      )}
+                    </>
                   ) : (
-                    <p className="text-sm text-muted">thinking…</p>
+                    <p className="text-sm">
+                      {entry.kind === "guide" ? entry.result.say : entry.say}
+                      <span className="mt-1 block text-xs text-muted">
+                        Open the desktop app for this one — it needs your screen.
+                      </span>
+                    </p>
                   )}
-                  {!entry.done && entry.answer && (
-                    <span className="mt-1 inline-block h-4 w-1.5 translate-y-0.5 bg-foreground/70" />
-                  )}
-                </>
-              ) : (
-                <p className="text-sm">
-                  {entry.kind === "guide" ? entry.result.say : entry.say}
-                  <span className="mt-1 block text-xs text-muted">
-                    Open the desktop app for this one — it needs your screen.
-                  </span>
-                </p>
-              )}
-            </div>
-          ))}
+                </div>
+              </div>
+            ),
+          )}
+          <div ref={answerEndRef} />
         </div>
 
         <div className="border-t border-line p-4">

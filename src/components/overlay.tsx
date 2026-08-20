@@ -287,19 +287,16 @@ function Thread({
 }
 
 /**
- * What the user said, as its own turn in the thread.
+ * What the user said, as its own message in the thread.
  *
- * This used to be an 11px uppercase caption inside the reply — and on a
- * walkthrough it was not rendered at all, so asking for something made your own
- * words disappear. A conversation shows both halves: you see what you said, then
- * the answer arrives underneath it.
+ * Sent messages sit on the right in a filled bubble, replies on the left — the
+ * arrangement every chat uses, and the reason a thread reads as two people
+ * talking rather than as a list of cards.
  */
 function UserMessage({ text }: { text: string }) {
   return (
-    <div className="flex justify-end">
-      <p className="max-w-[85%] rounded-2xl rounded-br-md bg-white/10 px-3.5 py-2 text-[13px] leading-relaxed text-foreground">
-        {text}
-      </p>
+    <div className="flex justify-end pl-8">
+      <p className="user-bubble">{text}</p>
     </div>
   );
 }
@@ -313,11 +310,11 @@ const EntryCard = memo(function EntryCard(props: {
   onConfirm: (i: number) => void;
   onDismiss: (i: number) => void;
 }) {
+  if (props.entry.kind === "you") return <UserMessage text={props.entry.text} />;
   return (
-    <>
-      {props.entry.question && <UserMessage text={props.entry.question} />}
+    <div className="flex justify-start pr-6">
       <EntryBody {...props} />
-    </>
+    </div>
   );
 });
 
@@ -344,9 +341,11 @@ function EntryBody({
   const onConfirm = () => confirm(index);
   const onDismiss = () => dismiss(index);
 
+  if (entry.kind === "you") return null; // rendered as a bubble by EntryCard
+
   if (entry.kind === "text") {
     return (
-      <div className="answer-card p-3.5">
+      <div className="answer-card min-w-0 max-w-full p-3.5">
         {entry.answer ? (
           <AnswerBody>{entry.answer}</AnswerBody>
         ) : (
@@ -361,7 +360,7 @@ function EntryBody({
     const { result, step } = entry;
     const busy = entry.working || entry.clicking;
     return (
-      <div className="answer-card space-y-3 p-3.5">
+      <div className="answer-card w-full space-y-3 p-3.5">
         {result.steps.length > 0 && !entry.done && (
           <p className="text-[11px] font-medium uppercase tracking-widest text-indigo-300">
             Step {Math.min(step + 1, result.steps.length)} of {result.steps.length}
@@ -456,7 +455,7 @@ function EntryBody({
 
   // A launch.
   return (
-    <div className="answer-card p-3.5">
+    <div className="answer-card w-full p-3.5">
       {entry.say && <p className="text-[13px] leading-relaxed">{entry.say}</p>}
 
       {entry.status === "confirm" && (

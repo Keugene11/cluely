@@ -39,9 +39,20 @@ export type GuideResult = {
 /**
  * One turn of the conversation. There is no mode switch any more: the user
  * asks, /api/ask decides, and the kind of entry that comes back is the answer
- * to "what did they want". All three render in the same thread.
+ * to "what did they want". All of them render in the same thread.
+ *
+ * The user's own message is a row like any other, rather than a field on the
+ * reply. A turn is two messages — yours, then Otto's — and one row cannot be
+ * two messages. It also means a turn that answers *and* then calls a tool shows
+ * what you said once, at the top, instead of once per row it produced.
  */
 export type Entry =
+  /** What the user said, verbatim. `""` is never appended, only shown. */
+  | { kind: "you"; text: string }
+  /**
+   * `question` on the rows below is the goal a walkthrough re-reads on every
+   * step, not something to display — the "you" row above is what gets shown.
+   */
   | { kind: "text"; question: string; answer: string; done: boolean }
   | {
       kind: "guide";

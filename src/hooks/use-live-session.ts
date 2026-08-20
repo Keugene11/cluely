@@ -144,6 +144,12 @@ export function useLiveSession(voiceEnabled = true) {
   const autoRef = useRef<Set<number>>(new Set());
   /** How many times each step has been attempted, keyed "entry:step". */
   const attemptsRef = useRef<Map<string, number>>(new Map());
+  /**
+   * runRest is defined below ask, so a walkthrough that wants to start itself
+   * reaches it through here. Asking for something and being handed a row of
+   * buttons to press is not a conversation; saying it should be enough.
+   */
+  const runRestRef = useRef<((index: number) => void) | null>(null);
   const askingRef = useRef(false);
   const questionRef = useRef("");
   const voiceRef = useRef(voiceEnabled);
@@ -393,6 +399,12 @@ export function useLiveSession(voiceEnabled = true) {
     const typed = (override ?? questionRef.current).trim();
     setQuestion("");
 
+    // Your message goes into the thread first, as its own row, so it is on
+    // screen the instant you hit send and the reply arrives underneath it.
+    // Ctrl+Enter with an empty box asks about the screen and the room, and has
+    // nothing to show — an empty bubble is worse than no bubble.
+    if (typed) append({ kind: "you", text: typed });
+
     // The turn starts as a text answer and is rewritten in place if the
     // dispatcher calls a tool instead.
     const index = append({ kind: "text", question: typed, answer: "", done: false });
@@ -457,6 +469,13 @@ export function useLiveSession(voiceEnabled = true) {
         void speak(result.say, voiceRef.current);
         if (result.point) void desktop?.point(result.point);
         else void desktop?.clearPoint();
+
+        // Start working immediately rather than parking behind a button. The
+        // user asked for something to be done; presenting them with "Click it",
+        // "Next" and "Do the rest" and waiting is a wizard, not an answer. Stop
+        // stays available throughout and takes effect between steps.
+        const actionable = Boolean(result.point) || (result.actions?.length ?? 0) > 0;
+        if (actionable && !result.done) runRestRef.current?.(at);
         return;
       }
 
@@ -759,6 +778,10 @@ export function useLiveSession(voiceEnabled = true) {
     },
     [clickStep, patch],
   );
+
+  // Let a freshly created walkthrough start itself. ask() runs before runRest
+  // exists, so it goes through this rather than calling it directly.
+  runRestRef.current = runRest;
 
   /** The user clicked through a launch Otto inferred rather than was told to do. */
   const confirmOpen = useCallback(

@@ -135,10 +135,29 @@ body:has(.overlay-root) {
   pointer-events: none;
 }
 
+/* ── Chat bubbles ─────────────────────────────────────────────────────────── */
+/* Two shapes, one on each side. The tucked-in corner is the tail: bottom-right
+   on what you sent, bottom-left on what came back — the cue that says which of
+   you is speaking before a single word is read. */
+
 .answer-card {
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0.85rem;
+  border-radius: 1.15rem 1.15rem 1.15rem 0.35rem;
+}
+
+.user-bubble {
+  border-radius: 1.15rem 1.15rem 0.35rem 1.15rem;
+  padding: 8px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #fff;
+  /* Sent messages are the one filled, saturated thing in the thread, so the
+     eye finds your own words instantly while scrolling back. */
+  background: linear-gradient(180deg, #5b62f0, #4b46d8);
+  box-shadow: 0 6px 16px -8px rgba(80, 80, 240, 0.9);
+  white-space: pre-wrap; /* a message typed across two lines stays two lines */
+  overflow-wrap: anywhere;
 }
 
 /* Soft brand glow that sits behind the header. */

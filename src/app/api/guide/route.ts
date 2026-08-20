@@ -97,10 +97,14 @@ export async function POST(req: Request) {
   try {
     response = await anthropic().messages.create({
       model: GUIDE_MODEL,
-      max_tokens: 2500, // headroom so adaptive thinking can't truncate the JSON
+      max_tokens: 900, // the per-step JSON is small; steps are not re-sent
       system: GUIDE_SYSTEM,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
+      // No extended thinking here, deliberately. A step is perception — read the
+      // screenshot, name the control, say whether the last action landed — and it
+      // sits between one click and the next, where latency is the whole
+      // experience. Thinking was costing seconds per step for a judgement the
+      // model makes correctly without it.
+      output_config: { effort: "low" },
       messages: [{ role: "user", content }],
     });
   } catch (err) {
