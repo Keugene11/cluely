@@ -4,3 +4,5 @@ electron
 scripts/make-icon.js
 electron-builder.yml
 .qodo
+.env*
+!.env.example
