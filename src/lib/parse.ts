@@ -69,7 +69,15 @@ export function clampPoint(point: unknown): Point | null {
   };
 }
 
-export const ACTION_KINDS = ["click", "double_click", "type", "key", "scroll", "drag"] as const;
+export const ACTION_KINDS = [
+  "click",
+  "double_click",
+  "type",
+  "key",
+  "scroll",
+  "drag",
+  "focus",
+] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
 /** One thing to do on screen. Only the fields its `kind` needs are present. */
@@ -82,6 +90,8 @@ export type Action = {
   text?: string;
   combo?: string;
   notches?: number;
+  /** For kind "focus": the app to bring to the front, by name. */
+  app?: string;
 };
 
 const unit = (value: unknown) => Math.min(1, Math.max(0, Number(value)));
@@ -117,6 +127,18 @@ export function normalizeActions(value: unknown): Action[] {
       const text = typeof a.text === "string" ? a.text : "";
       if (!text) continue;
       out.push({ kind, label, text: text.slice(0, 2000) });
+      continue;
+    }
+    // Bringing a window forward is not a click on anything, so it needs no
+    // coordinate — but it repaints the whole screen, which makes every
+    // coordinate read from the current screenshot wrong afterwards. It therefore
+    // spends the one positional slot, and nothing aimed may follow it this turn.
+    if (kind === "focus") {
+      const app = String(a.app ?? a.label ?? "").trim();
+      if (!app || app.length > 100 || /[\r\n\t]/.test(app)) continue;
+      if (usedPosition) break;
+      usedPosition = true;
+      out.push({ kind, label, app });
       continue;
     }
     if (kind === "key") {

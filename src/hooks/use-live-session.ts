@@ -49,6 +49,16 @@ async function performActions(
         result = await desktop.scroll?.({ ...at, notches: action.notches ?? -3 });
       else if (action.kind === "drag" && action.to)
         result = await desktop.drag?.({ from: at, to: action.to, label: action.label });
+      // Focus goes through `open`, which finds an existing window and restores
+      // it. Clicking a taskbar icon cannot do this job: it toggles, so a retry
+      // puts the window straight back down — which is exactly how runs got
+      // stuck opening and re-minimising the same app.
+      else if (action.kind === "focus" && action.app) {
+        result = await desktop.open(action.app);
+        // The window has to finish coming forward before anything is read from
+        // the screen again, or the next turn photographs the old one.
+        if (result?.ok) await new Promise((r) => setTimeout(r, 900));
+      }
     } catch {
       return { ok: false, message: `Could not ${named(action)}.` };
     }

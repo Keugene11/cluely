@@ -199,6 +199,39 @@ describe("normalizeActions", () => {
     expect(out.map((a) => a.kind)).toEqual(["click", "type", "key"]);
   });
 
+  it("keeps a focus action and uses its app name", () => {
+    expect(normalizeActions([{ kind: "focus", label: "CapCut", app: "capcut" }])).toEqual([
+      { kind: "focus", label: "CapCut", app: "capcut" },
+    ]);
+  });
+
+  it("falls back to the label when focus has no app", () => {
+    const [a] = normalizeActions([{ kind: "focus", label: "CapCut" }]);
+    expect(a).toMatchObject({ kind: "focus", app: "CapCut" });
+  });
+
+  it("drops a focus action naming nothing", () => {
+    expect(normalizeActions([{ kind: "focus", label: "" }])).toEqual([]);
+  });
+
+  // Bringing a window forward repaints everything, so coordinates read from the
+  // current screenshot are worthless afterwards.
+  it("does not let an aimed action follow a focus", () => {
+    const out = normalizeActions([
+      { kind: "focus", label: "CapCut", app: "capcut" },
+      { kind: "click", label: "Create project", x: 0.5, y: 0.1 },
+    ]);
+    expect(out.map((a) => a.kind)).toEqual(["focus"]);
+  });
+
+  it("does not let a focus follow an aimed action either", () => {
+    const out = normalizeActions([
+      { kind: "click", label: "somewhere", x: 0.2, y: 0.2 },
+      { kind: "focus", label: "CapCut", app: "capcut" },
+    ]);
+    expect(out.map((a) => a.kind)).toEqual(["click"]);
+  });
+
   it("caps a run at five actions", () => {
     // focus-relative, so the positional guard is not what does the trimming
     expect(normalizeActions(Array(9).fill({ kind: "key", label: "k", combo: "a" }))).toHaveLength(5);

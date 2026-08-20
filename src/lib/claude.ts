@@ -45,19 +45,22 @@ Return JSON only, matching exactly:
     - x and y are the CENTER of that element as fractions of the screenshot: x from 0 (far left) to 1 (far right), y from 0 (top) to 1 (bottom).
     - "label" names the element in a few words (e.g. "Effects panel", "Export button").
     - Use null if the element is not visible yet (say where to find it) or if this step is general advice with nothing to point at.
-- "actions": the exact things to DO for this step, in order. Use it whenever the step is more than one press — typing into a field, pressing a shortcut, scrolling to reveal something, dragging one point to another. Anything involving text or a keyboard shortcut belongs here; "point" alone cannot type. Each is {"kind": "click" | "double_click" | "type" | "key" | "scroll" | "drag", "label": string, and whatever that kind needs}:
+- "actions": the exact things to DO for this step, in order. Use it whenever the step is more than one press — typing into a field, pressing a shortcut, scrolling to reveal something, dragging one point to another. Anything involving text or a keyboard shortcut belongs here; "point" alone cannot type. Each is {"kind": "click" | "double_click" | "type" | "key" | "scroll" | "drag" | "focus", "label": string, and whatever that kind needs}:
     - click, double_click: "x", "y".
     - type: "text" — the literal text, sent to whatever has focus. Click the field first.
     - key: "combo" — lowercase, joined with "+": "enter", "ctrl+i", "ctrl+shift+left", "delete".
     - scroll: "x", "y", and "notches" (negative scrolls down the page; default -3).
     - drag: "x", "y" to press at, and "to": {"x", "y"} to release at.
+    - focus: "app" — the application to bring to the front, by plain name. No coordinate.
   Read every coordinate off THIS screenshot. At most 5, and stop at the point where you would need to see the screen again to know what happened — you get another turn with a fresh screenshot. Return [] when a plain click on "point" is the whole step.
   At most ONE action per turn may use x/y (click, double_click, scroll, drag), and it must be first. Once it runs the page may have moved, so any later coordinate is read from a screenshot that is no longer true and will be dropped. "type" and "key" go to whatever has focus rather than to a coordinate, so they chain safely after it — click the search box, type the query, press enter is one good turn.
 - "expect": one short sentence naming what will be visibly TRUE on screen once this step has worked, judged from a screenshot alone. Be concrete and checkable: "the CapCut editor is open with an empty timeline", "a file picker dialog is showing", "the clip appears on the timeline". Not "the click worked" or "the project is created" — name what a person would SEE. This is how the next turn tells whether the step actually happened.
 - "happened": when you are told what the previous step expected, look at the screenshot and answer honestly — true if that is now visibly the case, false if it is not. Use null only on the first turn, when there is nothing to check yet. Being wrong here is worse than being slow: a false "true" ends the run believing work was done that was not. If you cannot see the expected thing, it is false.
 - "done": true only when the whole task is complete (or this was the last step); false while there are more steps to go.
 
-Desktop and taskbar icons need "actions" with a "double_click", not "point" — a single click only selects an icon, it does not open it. This is the most common reason a first step silently achieves nothing.
+To bring an application to the front, use an action of {"kind": "focus", "app": "capcut", "label": "CapCut"}. Do NOT click its taskbar button or desktop icon to do this. A taskbar button toggles — the second click minimises the window the first one restored — so trying again makes it worse, and this is exactly how runs get stuck opening and re-hiding the same app. "focus" restores a minimised window properly and works whether or not the app is already running. Nothing aimed at a coordinate may follow it in the same turn, because the screen will have changed completely; take the next look first.
+
+Desktop icons that you genuinely do need to open (a file, a folder) need "actions" with a "double_click", not "point" — a single click only selects an icon, it does not open it.
 
 You will be told which step the user is on. Each turn, look at the FRESH screenshot — the screen changes as they work — and point at the element for THAT step, even if it just appeared. Never invent UI that is not there. If unsure of the exact spot, still give your best coordinate with a clear label.
 
@@ -171,9 +174,14 @@ export const ASK_TOOLS = [
             properties: {
               kind: {
                 type: "string",
-                enum: ["click", "double_click", "type", "key", "scroll", "drag"],
+                enum: ["click", "double_click", "type", "key", "scroll", "drag", "focus"],
                 description:
-                  "click/double_click/scroll/drag act at x,y. type sends literal text to whatever has focus. key sends a shortcut.",
+                  "click/double_click/scroll/drag act at x,y. type sends literal text to whatever has focus. key sends a shortcut. focus brings an app to the front by name — use it instead of clicking a taskbar or desktop icon, which toggles and will re-minimise the app you just opened.",
+              },
+              app: {
+                type: "string",
+                description:
+                  'For kind=focus: the app to bring forward, by plain name ("capcut", "chrome"). Restores it properly even when minimised.',
               },
               x: { type: "number", description: "Fraction of screenshot width, 0-1. Required for click, double_click, scroll, drag." },
               y: { type: "number", description: "Fraction of screenshot height, 0-1. Required for click, double_click, scroll, drag." },

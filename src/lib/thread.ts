@@ -12,7 +12,7 @@ export type Point = { x: number; y: number; label: string };
  * it, so this model stays free of anything that touches a request.
  */
 export type Action = {
-  kind: "click" | "double_click" | "type" | "key" | "scroll" | "drag";
+  kind: "click" | "double_click" | "type" | "key" | "scroll" | "drag" | "focus";
   label: string;
   x?: number;
   y?: number;
@@ -20,6 +20,8 @@ export type Action = {
   text?: string;
   combo?: string;
   notches?: number;
+  /** For kind "focus": the app to bring to the front, by name. */
+  app?: string;
 };
 export type GuideResult = {
   say: string;
