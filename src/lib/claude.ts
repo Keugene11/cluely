@@ -1,6 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-export const MODEL = "claude-opus-5";
+/**
+ * The dispatcher model — /api/ask, which decides what the user wanted and, most
+ * of the time, answers a real question (a coding problem, a slide, a
+ * spreadsheet). This is the one whose reasoning quality the user actually sees.
+ */
+export const MODEL = "claude-sonnet-5";
+
+/**
+ * The walkthrough model — /api/guide, which does one narrow thing per call:
+ * look at a fresh screenshot and return the coordinate of one control. It runs
+ * once per step, on the critical path between one click and the next, so
+ * latency here is felt directly.
+ *
+ * Split from MODEL so the two can be tuned independently — they are the same
+ * today, but these are not the same job.
+ */
+export const GUIDE_MODEL = "claude-sonnet-5";
 
 let client: Anthropic | null = null;
 

@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
-import { anthropic, MODEL, GUIDE_SYSTEM } from "@/lib/claude";
+import { anthropic, GUIDE_MODEL, GUIDE_SYSTEM } from "@/lib/claude";
 import { clampPoint, parseImageDataUrl, parseModelJson, type Point } from "@/lib/parse";
 
 export const maxDuration = 60;
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   let response;
   try {
     response = await anthropic().messages.create({
-      model: MODEL,
+      model: GUIDE_MODEL,
       max_tokens: 2500, // headroom so adaptive thinking can't truncate the JSON
       system: GUIDE_SYSTEM,
       thinking: { type: "adaptive" },
