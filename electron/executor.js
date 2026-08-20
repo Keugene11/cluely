@@ -132,7 +132,14 @@ public class OttoInput {
   public static void TypeB64(string b64) {
     string s = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(b64));
     foreach (char c in s) {
-      if (c == '\n') { Send(0x0D, 0, 0); Send(0x0D, 0, 2); continue; } // VK_RETURN
+      // The escape below is doubled on purpose. This C# lives inside a JS
+      // template literal, so a single backslash is consumed by JS and C# ends up
+      // with a real line break inside a character constant -- Add-Type fails
+      // with "Newline in constant", the host dies on startup, and every input
+      // action reports "The input helper stopped". Do not simplify it, and do
+      // not write the single-backslash form anywhere in this string, comments
+      // included.
+      if (c == '\\n') { Send(0x0D, 0, 0); Send(0x0D, 0, 2); continue; } // VK_RETURN
       Send(0, c, 0x0004);          // KEYEVENTF_UNICODE down
       Send(0, c, 0x0004 | 0x0002); // ...and up
       System.Threading.Thread.Sleep(8); // editors drop characters typed faster
