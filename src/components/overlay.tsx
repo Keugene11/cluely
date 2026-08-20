@@ -286,7 +286,42 @@ function Thread({
   );
 }
 
-const EntryCard = memo(function EntryCard({
+/**
+ * What the user said, as its own turn in the thread.
+ *
+ * This used to be an 11px uppercase caption inside the reply — and on a
+ * walkthrough it was not rendered at all, so asking for something made your own
+ * words disappear. A conversation shows both halves: you see what you said, then
+ * the answer arrives underneath it.
+ */
+function UserMessage({ text }: { text: string }) {
+  return (
+    <div className="flex justify-end">
+      <p className="max-w-[85%] rounded-2xl rounded-br-md bg-white/10 px-3.5 py-2 text-[13px] leading-relaxed text-foreground">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+const EntryCard = memo(function EntryCard(props: {
+  index: number;
+  entry: Entry;
+  onNext: (i: number) => void;
+  onClickStep: (i: number) => void;
+  onRunRest: (i: number) => void;
+  onConfirm: (i: number) => void;
+  onDismiss: (i: number) => void;
+}) {
+  return (
+    <>
+      {props.entry.question && <UserMessage text={props.entry.question} />}
+      <EntryBody {...props} />
+    </>
+  );
+});
+
+function EntryBody({
   index,
   entry,
   onNext: next,
@@ -312,9 +347,6 @@ const EntryCard = memo(function EntryCard({
   if (entry.kind === "text") {
     return (
       <div className="answer-card p-3.5">
-        {entry.question && (
-          <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">{entry.question}</p>
-        )}
         {entry.answer ? (
           <AnswerBody>{entry.answer}</AnswerBody>
         ) : (
@@ -425,9 +457,6 @@ const EntryCard = memo(function EntryCard({
   // A launch.
   return (
     <div className="answer-card p-3.5">
-      {entry.question && (
-        <p className="mb-1.5 text-[11px] uppercase tracking-widest text-muted">{entry.question}</p>
-      )}
       {entry.say && <p className="text-[13px] leading-relaxed">{entry.say}</p>}
 
       {entry.status === "confirm" && (
@@ -462,7 +491,7 @@ const EntryCard = memo(function EntryCard({
       )}
     </div>
   );
-});
+}
 
 // ── Shared bits ──────────────────────────────────────────────────────────────
 
