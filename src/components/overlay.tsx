@@ -3,6 +3,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
+  ChevronDown,
+  ChevronUp,
   Download,
   Eye,
   EyeOff,
@@ -136,8 +138,24 @@ export function Overlay() {
     return desktop.onAssist(() => ask());
   }, [desktop, ask]);
 
-  const panelOpen =
-    open || live.entries.length > 0 || live.capturing || live.micError != null;
+  // Escape collapses. Nothing else in the overlay uses the key, and it is the
+  // one thing you can hit without aiming when someone walks past your desk.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // `open` is the whole answer: nothing forces the panel back up. A thread that
+  // re-opened itself because entries existed could not be collapsed at all,
+  // which is the state the app spent most of its life in.
+  //
+  // Collapsed leaves the bar — draggable, still hotkeyed, still able to ask —
+  // and the resize observer above pulls the window down to hug it. The thread
+  // is only hidden: entries stay in state and are all there when it comes back.
+  const panelOpen = open;
 
   return (
     <div ref={rootRef} className="w-full px-3 pt-3 pb-3" style={{ background: "transparent" }}>
@@ -157,8 +175,12 @@ export function Overlay() {
           )}
         </div>
 
+        {/* Collapsed, this is the only sign the thread still exists, so it says
+            so rather than repeating the instructions. */}
         <p className="hidden flex-1 px-3 text-center text-xs text-muted sm:block">
-          Ask, or say what you want done
+          {!panelOpen && live.entries.length > 0
+            ? `${live.entries.length} message${live.entries.length === 1 ? "" : "s"} hidden`
+            : "Ask, or say what you want done"}
         </p>
 
         {/* Actions */}
@@ -187,6 +209,17 @@ export function Overlay() {
               {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </IconBtn>
           )}
+
+          <IconBtn
+            onClick={() => setOpen((v) => !v)}
+            title={panelOpen ? "Hide the thread (Esc)" : "Show the thread"}
+          >
+            {panelOpen ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </IconBtn>
 
           <IconBtn onClick={() => desktop?.quit()} title="Quit">
             <X className="h-4 w-4" />
