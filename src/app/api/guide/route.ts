@@ -19,6 +19,10 @@ export type GuideResult = {
   point: Point | null;
   /** Ordered things to actually do for this step; empty when a click is enough. */
   actions: Action[];
+  /** What should be visibly true on screen once this step has worked. */
+  expect: string;
+  /** Whether the PREVIOUS step's expectation came true. Null on the first turn. */
+  happened: boolean | null;
   done: boolean;
 };
 
@@ -30,7 +34,7 @@ export async function POST(req: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { question, image, goal, steps, stepIndex } = await req.json();
+  const { question, image, goal, steps, stepIndex, verify, attempt } = await req.json();
   const parsed = parseImageDataUrl(image);
 
   if (!parsed) {
@@ -47,13 +51,28 @@ export async function POST(req: Request) {
   // Build the instruction: initial ask vs. continuing a walkthrough on a fresh
   // screenshot (the screen has changed since the user did the previous step).
   let instruction: string;
+  const expected = String(verify ?? "").trim();
+  const tries = Number.isInteger(attempt) ? (attempt as number) : 0;
+
   if (continuing) {
     const idx = Math.max(0, Math.min(stepIndex as number, plan.length - 1));
     instruction = [
       `The user is being walked through this goal: "${String(goal ?? "").trim() || ask}".`,
       `The plan is:\n${plan.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
       `They have done the earlier steps. They are now on step ${idx + 1}: "${plan[idx]}".`,
-      "Look at the FRESH screenshot and point at the element for this step. If the task now looks complete, set done to true.",
+      // Checking the previous step comes before planning the next one, so a
+      // step that quietly did nothing is caught here rather than becoming a
+      // wrong starting point for everything after it.
+      expected
+        ? [
+            `FIRST, check the previous action. It should have made this true: "${expected}".`,
+            "Look at the screenshot and set \"happened\" to true only if that is now visibly the case, false if it is not.",
+            tries > 0
+              ? `This step has already been attempted ${tries + 1} times without that becoming true. Do not repeat the same click — the target is wrong, hidden behind something, or needs a different interaction (a double-click for an icon, a menu opened first). Aim somewhere different or say plainly that it is not working.`
+              : "If it did not happen, stay on this same step and try a different way of doing it rather than moving on.",
+          ].join("\n")
+        : 'Set "happened" to null — there is nothing to check yet.',
+      "THEN look at the FRESH screenshot and point at the element for this step. If the task now looks complete, set done to true.",
       // The client keeps the original plan (see `continuing` below), so anything
       // returned here is thrown away. Every step of a walkthrough was paying to
       // regenerate it, and those tokens are on the critical path between one
@@ -108,6 +127,10 @@ export async function POST(req: Request) {
     steps: continuing ? plan : Array.isArray(parsedResult.steps) ? parsedResult.steps.map(String) : [],
     point: clampPoint(parsedResult.point),
     actions: normalizeActions(parsedResult.actions),
+    expect: typeof parsedResult.expect === "string" ? parsedResult.expect.slice(0, 300) : "",
+    // Only a real boolean counts. A missing or malformed value must not read as
+    // "yes it happened" — an unverified step is treated as unverified.
+    happened: typeof parsedResult.happened === "boolean" ? parsedResult.happened : null,
     done: Boolean(parsedResult.done),
   };
 

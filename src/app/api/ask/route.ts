@@ -186,6 +186,8 @@ function normalizeGuide(input: Record<string, unknown>) {
     steps: Array.isArray(input.steps) ? input.steps.map(String) : [],
     point: clampPoint(input.point),
     actions: normalizeActions(input.actions),
+    expect: typeof input.expect === "string" ? input.expect.slice(0, 300) : "",
+    happened: null, // nothing has been attempted yet on the opening turn
     done: Boolean(input.done),
   };
 }

@@ -10,6 +10,16 @@ export type { Entry, GuideResult, Line, Point } from "@/lib/thread";
 type Acted = { ok: boolean; message: string };
 
 /**
+ * How many times one step may be attempted before the run stops.
+ *
+ * Three is enough for the usual recoverable cases — an icon that wanted a
+ * double-click, a target hidden behind a dialog, a coordinate a little off —
+ * and few enough that a step which genuinely cannot be done stops quickly
+ * instead of clicking around someone's desktop indefinitely.
+ */
+const MAX_ATTEMPTS = 3;
+
+/**
  * Run a step's actions in order, stopping at the first failure.
  *
  * Sequential and never parallel: these are keystrokes and clicks going into a
@@ -122,6 +132,8 @@ export function useLiveSession(voiceEnabled = true) {
   const entriesRef = useRef<Entry[]>([]);
   // Indices of guide entries currently clicking through their own steps.
   const autoRef = useRef<Set<number>>(new Set());
+  /** How many times each step has been attempted, keyed "entry:step". */
+  const attemptsRef = useRef<Map<string, number>>(new Map());
   const askingRef = useRef(false);
   const questionRef = useRef("");
   const voiceRef = useRef(voiceEnabled);
@@ -528,8 +540,16 @@ export function useLiveSession(voiceEnabled = true) {
    * fresh shot and ask where to point now. This stays on /api/guide rather than
    * the dispatcher — mid-walkthrough there is nothing left to decide.
    */
+  /**
+   * Ask for the next step, and — when the caller passes what the last one was
+   * supposed to achieve — have the model check that first.
+   *
+   * `stay` keeps the walkthrough on the same step instead of moving on, which is
+   * what a failed check needs: the step has to be attempted a different way, not
+   * abandoned while everything after it plans from a screen that never changed.
+   */
   const advanceGuide = useCallback(
-    async (index: number) => {
+    async (index: number, opts: { verify?: string; attempt?: number; stay?: boolean } = {}) => {
       const entry = entriesRef.current[index];
       if (!entry || entry.kind !== "guide" || entry.working) return;
 
@@ -541,7 +561,7 @@ export function useLiveSession(voiceEnabled = true) {
         return;
       }
 
-      const nextStep = entry.step + 1;
+      const nextStep = opts.stay ? entry.step : entry.step + 1;
       patch(index, (e) => (e.kind === "guide" ? { ...e, working: true, error: null } : e));
 
       const image = await desktop.captureScreen().catch(() => null);
@@ -560,6 +580,8 @@ export function useLiveSession(voiceEnabled = true) {
           steps: entry.result.steps,
           stepIndex: nextStep,
           image,
+          verify: opts.verify ?? "",
+          attempt: opts.attempt ?? 0,
         }),
       }).catch(() => null);
 
@@ -641,9 +663,44 @@ export function useLiveSession(voiceEnabled = true) {
       // being handled elsewhere, so the check has to be made here.
       const changed = after && before ? after !== before : true;
 
-      await advanceGuide(index);
-      const next = entriesRef.current[index];
-      if (next?.kind !== "guide" || next.error) return false;
+      // What this step was supposed to achieve, so the next turn can check it
+      // instead of assuming the press did what it looked like it would do.
+      const expected = entry.result.expect ?? "";
+      const key = `${index}:${entry.step}`;
+      const tried = attemptsRef.current.get(key) ?? 0;
+
+      await advanceGuide(index, { verify: expected, attempt: tried });
+      const checked = entriesRef.current[index];
+      if (checked?.kind !== "guide" || checked.error) return false;
+
+      // The step did not do what it was meant to. Stay on it and try another
+      // way, rather than letting every later step plan from a screen that never
+      // reached the state they assume.
+      if (expected && checked.result.happened === false) {
+        const next_try = tried + 1;
+        attemptsRef.current.set(key, next_try);
+        if (next_try >= MAX_ATTEMPTS) {
+          attemptsRef.current.delete(key);
+          patch(index, (e) =>
+            e.kind === "guide"
+              ? {
+                  ...e,
+                  error: `Tried ${next_try} times and "${expected}" still isn't true — stopping rather than guessing further.`,
+                }
+              : e,
+          );
+          return false;
+        }
+        // Re-plan the SAME step with a fresh look; the model is told the last
+        // attempt failed, so it should aim somewhere else this time.
+        await advanceGuide(index, { verify: expected, attempt: next_try, stay: true });
+        const again = entriesRef.current[index];
+        if (again?.kind !== "guide" || again.error || again.done) return false;
+        return again.result.point != null || (again.result.actions?.length ?? 0) > 0;
+      }
+
+      attemptsRef.current.delete(key); // it worked; forget the attempt history
+      const next = checked;
 
       if (next.done && !changed) {
         // A completion claim with an unchanged screen is the failure that looks
@@ -677,7 +734,11 @@ export function useLiveSession(voiceEnabled = true) {
       autoRef.current.add(index);
       patch(index, (e) => (e.kind === "guide" ? { ...e, auto: true } : e));
       try {
-        for (let i = 0; i < 12; i++) {
+        // Raised from 12 because a retry now costs an iteration: a five-step
+        // plan where two steps need a second attempt would otherwise be cut off
+        // mid-run and look like a failure of the plan rather than of the bound.
+        // Stop still takes effect between every step.
+        for (let i = 0; i < 20; i++) {
           if (!autoRef.current.has(index)) break;
           if (!(await clickStep(index))) break;
         }

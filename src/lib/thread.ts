@@ -27,6 +27,10 @@ export type GuideResult = {
   point: Point | null;
   /** Ordered things to do for this step. Empty when a single click is enough. */
   actions?: Action[];
+  /** What should be visibly true on screen once this step has worked. */
+  expect?: string;
+  /** Whether the PREVIOUS step's expectation came true. Null when unchecked. */
+  happened?: boolean | null;
   done: boolean;
 };
 
