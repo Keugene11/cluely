@@ -144,7 +144,13 @@ function createOverlay() {
   });
 }
 
-/** Resize the bar to fit its content, keeping it pinned top-center. */
+/**
+ * Resize the bar to fit its content, in place.
+ *
+ * It grows and shrinks from wherever you last dragged it — the position is read
+ * back and written unchanged — so collapsing the thread does not throw the
+ * window back to the top of the screen.
+ */
 function resizeOverlay(contentHeight) {
   if (!overlay || overlay.isDestroyed()) return;
   const h = Math.max(BAR_HEIGHT, Math.min(Math.round(contentHeight), MAX_HEIGHT));
