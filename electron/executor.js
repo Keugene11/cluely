@@ -372,6 +372,31 @@ function openApp(target) {
   const script = isUrl
     ? `Start-Process '${safe}'`
     : `
+# An app that is already running but minimised is the common case, and it is the
+# one Start-Process handles worst: it either does nothing visible or launches a
+# second copy, while the window sits at -32000,-32000 where Windows parks
+# minimised windows. Otto then screenshots the screen, cannot see the app, and
+# reasonably concludes it is not open — so restoring the existing window has to
+# come first.
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class OttoWin {
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+}
+"@
+$running = Get-Process -ErrorAction SilentlyContinue |
+  Where-Object { $_.MainWindowHandle -ne 0 -and ($_.ProcessName -like '*${safe}*' -or $_.MainWindowTitle -like '*${safe}*') } |
+  Select-Object -First 1
+if ($running) {
+  $h = $running.MainWindowHandle
+  if ([OttoWin]::IsIconic($h)) { [OttoWin]::ShowWindow($h, 9) | Out-Null } # SW_RESTORE
+  else { [OttoWin]::ShowWindow($h, 5) | Out-Null }                        # SW_SHOW
+  [OttoWin]::SetForegroundWindow($h) | Out-Null
+  exit 0
+}
 try { Start-Process '${safe}' -ErrorAction Stop; exit 0 } catch { }
 $roots = @(
   (Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'),

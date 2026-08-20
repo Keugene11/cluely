@@ -219,6 +219,13 @@ export async function speak(text: string, enabled: boolean): Promise<void> {
   const voice = await bestVoice();
   const natural = Boolean(voice && (/natural|neural/i.test(voice.name) || !voice.localService));
 
+  // Silence beats a bad voice. If the machine has nothing better than the old
+  // local SAPI5 set — on a stock Windows install that is David, Mark and Zira,
+  // all pre-neural — Otto says nothing rather than narrating in a robot voice
+  // over someone's work. Installing the natural voices (Settings, Accessibility,
+  // Narrator) turns speech back on by itself, with no setting to find.
+  if (!natural) return;
+
   for (const part of chunk(clean)) {
     const u = new SpeechSynthesisUtterance(part);
     if (voice) u.voice = voice;
