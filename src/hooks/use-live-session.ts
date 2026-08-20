@@ -615,6 +615,9 @@ export function useLiveSession(voiceEnabled = true) {
       if (!desktop?.click) return fail("Clicking only works in the desktop app.");
 
       patch(index, (e) => (e.kind === "guide" ? { ...e, clicking: true, error: null } : e));
+      // Frame before the action, to compare against afterwards. Otto's own
+      // windows are excluded from the capture, so this is the app underneath.
+      const before = await desktop.captureScreen?.().catch(() => null);
       // A step is either a plain click on `point` or an ordered run of actions —
       // never both, so a step that types into a box does not also click it twice.
       const result =
@@ -627,13 +630,37 @@ export function useLiveSession(voiceEnabled = true) {
       if (!result.ok) return fail(result.message);
 
       await new Promise((r) => setTimeout(r, 750)); // let the app repaint
+      const after = await desktop.captureScreen?.().catch(() => null);
       const settled = entriesRef.current[index];
       if (settled?.kind === "guide" && settled.done) return false;
 
+      // Did anything actually happen? An identical frame means the press landed
+      // on nothing — a disabled control, a window that never took focus, a
+      // coordinate that missed. The model cannot be asked about this reliably:
+      // it will read a terminal describing the task and conclude the work is
+      // being handled elsewhere, so the check has to be made here.
+      const changed = after && before ? after !== before : true;
+
       await advanceGuide(index);
-      const after = entriesRef.current[index];
-      if (after?.kind !== "guide" || after.done || after.error) return false;
-      return after.result.point != null || (after.result.actions?.length ?? 0) > 0;
+      const next = entriesRef.current[index];
+      if (next?.kind !== "guide" || next.error) return false;
+
+      if (next.done && !changed) {
+        // A completion claim with an unchanged screen is the failure that looks
+        // most like success, so it is refused rather than celebrated.
+        patch(index, (e) =>
+          e.kind === "guide"
+            ? {
+                ...e,
+                done: false,
+                error: "That didn't change anything on screen — the step hasn't actually happened.",
+              }
+            : e,
+        );
+        return false;
+      }
+      if (next.done) return false;
+      return next.result.point != null || (next.result.actions?.length ?? 0) > 0;
     },
     [patch, advanceGuide],
   );
