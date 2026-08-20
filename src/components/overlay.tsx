@@ -263,14 +263,18 @@ export function Thread({
   /** What to show before the first message. The demo cannot promise a screen. */
   empty?: React.ReactNode;
 }) {
-  const endRef = useRef<HTMLDivElement>(null);
+  // Scroll the thread's own box, never scrollIntoView: this renders inside a
+  // cross-origin iframe on other people's pages, and scrollIntoView walks up out
+  // of the frame and drags the embedding page down to us on first paint.
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const box = scrollRef.current;
+    box?.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
   }, [live.entries, live.capturing]);
 
   return (
     <>
-      <div className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
+      <div ref={scrollRef} className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
         {live.entries.length === 0 &&
           !live.capturing &&
           (empty ?? (
@@ -303,7 +307,6 @@ export function Thread({
             <ScanEye className="h-3.5 w-3.5" /> Reading your screen…
           </div>
         )}
-        <div ref={endRef} />
       </div>
 
       {live.micError && <p className="notice mx-4 mb-2">{live.micError}</p>}

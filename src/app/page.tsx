@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   ArrowRight,
   Download,
-  Check,
   FileText,
   Keyboard,
   Languages,
@@ -73,52 +72,6 @@ const stats = [
   { icon: Languages, value: "12+", label: "languages transcribed" },
   { icon: Timer, value: "~300ms", label: "transcription latency" },
   { icon: Sparkles, value: "95%", label: "transcription accuracy" },
-];
-
-const plans = [
-  {
-    name: "Starter",
-    price: "$0",
-    cadence: "forever",
-    blurb: "Enough to see whether it changes how a call goes.",
-    features: [
-      "20 live answers a month",
-      "Session history and transcripts",
-      "3 context files",
-      "Meeting notes on demand",
-    ],
-    cta: "Start free",
-    highlight: false,
-  },
-  {
-    name: "Pro",
-    price: "$20",
-    cadence: "per month",
-    blurb: "For anyone whose day is mostly conversations.",
-    features: [
-      "Unlimited live answers",
-      "Unlimited context files",
-      "Latest Claude models",
-      "Follow-up email drafts",
-      "Priority responses",
-    ],
-    cta: "Go Pro",
-    highlight: true,
-  },
-  {
-    name: "Team",
-    price: "Talk to us",
-    cadence: "",
-    blurb: "Shared context and admin controls for a whole team.",
-    features: [
-      "Everything in Pro",
-      "Shared context library",
-      "SSO and SCIM",
-      "Usage and retention controls",
-    ],
-    cta: "Contact sales",
-    highlight: false,
-  },
 ];
 
 export default function Home() {
@@ -266,63 +219,6 @@ export default function Home() {
                   <f.icon className="h-5 w-5" />
                   <h3 className="mt-5 text-lg font-medium">{f.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted">{f.body}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Pricing */}
-        <section id="pricing" className="border-b border-line/60">
-          <div className="mx-auto max-w-6xl px-5 py-20 md:py-28">
-            <h2 className="text-4xl font-semibold tracking-tight md:text-5xl">Pricing</h2>
-            <p className="mt-4 max-w-xl text-muted">
-              Start free. Upgrade when you catch yourself opening it for every call.
-            </p>
-
-            <div className="mt-14 grid gap-5 lg:grid-cols-3">
-              {plans.map((plan) => (
-                <div
-                  key={plan.name}
-                  className={`card flex flex-col p-7 ${
-                    plan.highlight ? "border-foreground/40 bg-surface-2" : ""
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium">{plan.name}</h3>
-                    {plan.highlight && (
-                      <span className="rounded-full bg-foreground px-2.5 py-0.5 text-xs font-medium text-background">
-                        Popular
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-5 flex items-end gap-2">
-                    <span className="text-4xl font-semibold tracking-tight">{plan.price}</span>
-                    {plan.cadence && <span className="pb-1 text-sm text-muted">{plan.cadence}</span>}
-                  </div>
-
-                  <p className="mt-3 text-sm text-muted">{plan.blurb}</p>
-
-                  <ul className="mt-6 flex-1 space-y-3 text-sm">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <Link
-                    href="/signup"
-                    className={`press mt-7 rounded-full px-5 py-3 text-center text-sm font-medium ${
-                      plan.highlight
-                        ? "bg-foreground text-background"
-                        : "border border-line hover:bg-surface-2"
-                    }`}
-                  >
-                    {plan.cta}
-                  </Link>
                 </div>
               ))}
             </div>

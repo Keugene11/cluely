@@ -16,7 +16,6 @@ export async function Nav() {
         <nav className="hidden items-center gap-7 text-sm text-muted md:flex">
           <Link href="/#how" className="press hover:text-foreground">How it works</Link>
           <Link href="/#features" className="press hover:text-foreground">Features</Link>
-          <Link href="/#pricing" className="press hover:text-foreground">Pricing</Link>
           <Link href="/download" className="press hover:text-foreground">Download</Link>
         </nav>
 
