@@ -17,6 +17,11 @@ const { initUpdater, installUpdate, getUpdateState } = require("./updater");
 const {
   openApp,
   click: clickAt,
+  doubleClick: doubleClickAt,
+  drag: dragExecutor,
+  scroll: scrollExecutor,
+  typeText: typeExecutor,
+  pressKeys: keysExecutor,
   glideTo: glideExecutor,
   warmUp: warmUpExecutor,
   shutdown: shutdownExecutor,
@@ -260,6 +265,82 @@ async function clickTarget(target) {
   } finally {
     if (overlayLive) overlay.setIgnoreMouseEvents(state.clickThrough, { forward: true });
   }
+}
+
+/**
+ * Everything that touches another app has to get our own overlay out of the
+ * way first, or the press lands on us instead of the thing underneath. Same
+ * dance every time, so it lives here once.
+ */
+async function actingOnScreen(fn) {
+  const overlayLive = overlay && !overlay.isDestroyed();
+  if (overlayLive) overlay.setIgnoreMouseEvents(true, { forward: true });
+  try {
+    return await fn();
+  } finally {
+    if (overlayLive) overlay.setIgnoreMouseEvents(state.clickThrough, { forward: true });
+  }
+}
+
+/** Move the drawn cursor to a point and let it land before the real one moves. */
+async function bringCursorTo(target, x, y) {
+  const alreadyThere =
+    lastPoint && Math.abs(lastPoint.x - x) < 0.005 && Math.abs(lastPoint.y - y) < 0.005;
+  if (!alreadyThere) {
+    pointCursor({ ...target, x, y });
+    await wait(560); // the spring settles in ~400ms; this clears it comfortably
+  }
+  return alreadyThere;
+}
+
+const norm = (v) => Math.min(1, Math.max(0, Number(v)));
+
+async function doubleClickTarget(target) {
+  const x = norm(target?.x);
+  const y = norm(target?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Nothing to click.");
+  const near = await bringCursorTo(target, x, y);
+  return actingOnScreen(async () => {
+    await glideExecutor(x, y, near ? 260 : 160);
+    cursorWindow?.webContents.send("cluely:press");
+    return doubleClickAt(x, y, 0);
+  });
+}
+
+/**
+ * A drag, drawn as well as performed. The drawn cursor is re-aimed at the
+ * destination the moment the button goes down, so it travels alongside the real
+ * pointer rather than teleporting after the fact — the spring re-aims mid-flight
+ * instead of needing to be cancelled and restarted.
+ *
+ * The two do not track perfectly: the spring settles in ~400ms while the drag
+ * itself is deliberately slower, so the drawn cursor arrives first on long
+ * pulls. It reads as the cursor leading the drag, which is fine, but it is a
+ * seam worth knowing about.
+ */
+async function dragTarget(payload) {
+  const fx = norm(payload?.from?.x);
+  const fy = norm(payload?.from?.y);
+  const tx = norm(payload?.to?.x);
+  const ty = norm(payload?.to?.y);
+  if (![fx, fy, tx, ty].every(Number.isFinite)) throw new Error("Nothing to drag.");
+
+  await bringCursorTo({ label: payload?.label ?? "" }, fx, fy);
+  return actingOnScreen(async () => {
+    cursorWindow?.webContents.send("cluely:press");
+    const ms = Math.max(120, Number(payload?.ms) || 700);
+    pointCursor({ label: payload?.label ?? "", x: tx, y: ty });
+    lastPoint = { x: tx, y: ty };
+    return dragExecutor(fx, fy, tx, ty, ms);
+  });
+}
+
+async function scrollTarget(payload) {
+  const x = norm(payload?.x);
+  const y = norm(payload?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Nothing to scroll.");
+  await bringCursorTo(payload, x, y);
+  return actingOnScreen(() => scrollExecutor(x, y, payload?.notches ?? -3));
 }
 
 /**
@@ -509,6 +590,41 @@ ipcMain.handle("cluely:click", async (_event, target) => {
     return { ok: true, message: await clickTarget(target) };
   } catch (err) {
     return { ok: false, message: err?.message ?? "Could not click that." };
+  }
+});
+ipcMain.handle("cluely:double-click", async (_event, target) => {
+  try {
+    return { ok: true, message: await doubleClickTarget(target) };
+  } catch (err) {
+    return { ok: false, message: err?.message ?? "Could not double-click that." };
+  }
+});
+ipcMain.handle("cluely:drag", async (_event, payload) => {
+  try {
+    return { ok: true, message: await dragTarget(payload) };
+  } catch (err) {
+    return { ok: false, message: err?.message ?? "Could not drag that." };
+  }
+});
+ipcMain.handle("cluely:scroll", async (_event, payload) => {
+  try {
+    return { ok: true, message: await scrollTarget(payload) };
+  } catch (err) {
+    return { ok: false, message: err?.message ?? "Could not scroll there." };
+  }
+});
+ipcMain.handle("cluely:type", async (_event, text) => {
+  try {
+    return { ok: true, message: await actingOnScreen(() => typeExecutor(text)) };
+  } catch (err) {
+    return { ok: false, message: err?.message ?? "Could not type that." };
+  }
+});
+ipcMain.handle("cluely:press-keys", async (_event, combo) => {
+  try {
+    return { ok: true, message: await actingOnScreen(() => keysExecutor(combo)) };
+  } catch (err) {
+    return { ok: false, message: err?.message ?? "Could not press that." };
   }
 });
 ipcMain.handle("cluely:get-update-state", () => getUpdateState());

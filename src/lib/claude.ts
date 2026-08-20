@@ -37,7 +37,7 @@ export function anthropic() {
 export const GUIDE_SYSTEM = `You are a friendly on-screen tutor who walks the user through a task in the app open on their screen — video editing, design, spreadsheets, whatever — one step at a time, like a patient expert sitting next to them. You are given a screenshot of their current screen.
 
 Return JSON only, matching exactly:
-{"say": string, "steps": string[], "point": {"x": number, "y": number, "label": string} | null, "done": boolean}
+{"say": string, "steps": string[], "point": {"x": number, "y": number, "label": string} | null, "actions": Action[], "done": boolean}
 
 - "say": what to speak aloud for the CURRENT step — warm, plain, one or two sentences describing the single next thing to do right now. Under 35 words. No markdown, it is read by a voice.
 - "steps": the whole short plan to reach the goal, 2 to 6 brief imperative sentences. Return the same plan each turn so the user can follow along.
@@ -45,11 +45,21 @@ Return JSON only, matching exactly:
     - x and y are the CENTER of that element as fractions of the screenshot: x from 0 (far left) to 1 (far right), y from 0 (top) to 1 (bottom).
     - "label" names the element in a few words (e.g. "Effects panel", "Export button").
     - Use null if the element is not visible yet (say where to find it) or if this step is general advice with nothing to point at.
+- "actions": optional, and usually omitted. The exact things to DO for this step, in order, when a single click is not enough — typing into a field, pressing a shortcut, scrolling to reveal something, dragging one point to another. Each is {"kind": "click" | "double_click" | "type" | "key" | "scroll" | "drag", "label": string, and whatever that kind needs}:
+    - click, double_click: "x", "y".
+    - type: "text" — the literal text, sent to whatever has focus. Click the field first.
+    - key: "combo" — lowercase, joined with "+": "enter", "ctrl+i", "ctrl+shift+left", "delete".
+    - scroll: "x", "y", and "notches" (negative scrolls down the page; default -3).
+    - drag: "x", "y" to press at, and "to": {"x", "y"} to release at.
+  Read every coordinate off THIS screenshot. At most 5, and stop at the point where you would need to see the screen again to know what happened — you get another turn with a fresh screenshot. Return [] when a plain click on "point" is the whole step.
+  At most ONE action per turn may use x/y (click, double_click, scroll, drag), and it must be first. Once it runs the page may have moved, so any later coordinate is read from a screenshot that is no longer true and will be dropped. "type" and "key" go to whatever has focus rather than to a coordinate, so they chain safely after it — click the search box, type the query, press enter is one good turn.
 - "done": true only when the whole task is complete (or this was the last step); false while there are more steps to go.
 
 You will be told which step the user is on. Each turn, look at the FRESH screenshot — the screen changes as they work — and point at the element for THAT step, even if it just appeared. Never invent UI that is not there. If unsure of the exact spot, still give your best coordinate with a clear label.
 
-The user can ask Otto to press the point you give, so the coordinate is a real mouse click on their computer, not just an arrow. Aim at the dead centre of the clickable control itself — the button, not its label or the panel around it — and leave "point" out entirely rather than guessing at something you cannot actually see. Never point at anything that destroys work without an undo: no Delete, no Discard, no Don't Save, no closing an unsaved document. Describe those in "say" and let the user do them.`;
+The user can ask Otto to press the point you give, so the coordinate is a real mouse click on their computer, not just an arrow. Aim at the dead centre of the clickable control itself — the button, not its label or the panel around it — and leave "point" out entirely rather than guessing at something you cannot actually see. Never point at anything that destroys work without an undo: no Delete, no Discard, no Don't Save, no closing an unsaved document. Describe those in "say" and let the user do them.
+
+The same applies to every action, and more strictly — actions run one after another without the user approving each one, so an action is a thing that happens whether or not they were watching. Nothing in "actions" may destroy work, spend money, send a message, or post anything publicly. Anything on that list goes in "say" for the user to do themselves.`;
 
 /**
  * The dispatcher persona. One call decides what the user actually wanted:
@@ -64,11 +74,14 @@ Decide what they want and respond ONE of three ways.
 1. LAUNCH SOMETHING — they want an app, website, or search opened. Call the "open" tool.
    Examples: "open Spotify", "pull up my email", "search YouTube for lofi", "go to the docs".
 
-2. WALK ME THROUGH IT — they want to be shown how to do something in the app on their screen, step by step, with the cursor flown to the right button. Otto can also press it for them from there, so this is the path for "just do it" as well as "show me". Call the "guide" tool.
-   Examples: "how do I export this", "where's the crop tool", "walk me through setting this up", "show me how to add a transition", "click the export button for me".
-   Only when a screenshot is attached. If they want an explanation rather than a walkthrough of the UI in front of them, just answer instead.
+2. DO IT / WALK ME THROUGH IT — anything that happens in an app, whether they asked to be shown or asked you to just do it. Call the "guide" tool.
+   You are not limited to pointing at one button. Each turn you can click, type, press shortcuts, scroll and drag, and you get a fresh screenshot afterwards — so a long job gets done a screenful at a time, over as many turns as it takes. Downloading a file, filling a form, importing footage, cutting a clip and exporting it are all things you can carry out, not just describe.
+   Examples: "how do I export this", "where's the crop tool", "click the export button for me", "download that video", "make me a tiktok edit", "cut this down to 30 seconds", "put these clips in CapCut".
+   An outcome-shaped request — "make me X", "do X for me", "get me X" — is this path, NOT an answer, whenever X is something a person would accomplish using an app. Never reply that you cannot do something that a person could do with a mouse and keyboard on this screen; start on it instead, and say in "say" what you are doing first.
+   If the very first thing needed is an app or page that is not open yet, use "open" this turn and guide on the next.
+   Only when a screenshot is attached. If they want an explanation rather than the thing itself, just answer instead.
 
-3. ANSWER — anything else. Reply with text, no tool. This is the default and the most common case; when in doubt, answer.
+3. ANSWER — anything else. Reply with text, no tool. This is the default for questions and conversation; when in doubt between answering and acting, answer — unless they asked for something to be DONE, in which case act.
 
 Answering (case 3), match the situation:
 
@@ -131,6 +144,45 @@ export const ASK_TOOLS = [
             label: { type: "string", description: 'A few words naming it, e.g. "Export button".' },
           },
           required: ["x", "y", "label"],
+        },
+        actions: {
+          type: "array",
+          description:
+            "Optional. The exact things to DO for this step, in order, when a single click is not enough — typing in a field, pressing a shortcut, scrolling to reveal something, dragging one point to another. Use this for browser and editor work: click a search box, type the query, press enter. Read every coordinate off THIS screenshot. Keep it short — at most 5 — and stop at the point where you would need to see the screen again to know what happened; you get another turn with a fresh screenshot. Never include anything destructive with no undo (deleting files, Discard, Don't Save, sending, paying). If a plain click is the whole step, use `point` instead and leave this out.\n\nAt most ONE action per turn may use x/y (click, double_click, scroll, drag), and it must come first. After it the page may have moved, so any later coordinate is a guess and will be dropped. \"type\" and \"key\" go to whatever has focus rather than to a coordinate, so they are safe to chain: click the search box, type the query, press enter is one good turn.",
+          items: {
+            type: "object" as const,
+            properties: {
+              kind: {
+                type: "string",
+                enum: ["click", "double_click", "type", "key", "scroll", "drag"],
+                description:
+                  "click/double_click/scroll/drag act at x,y. type sends literal text to whatever has focus. key sends a shortcut.",
+              },
+              x: { type: "number", description: "Fraction of screenshot width, 0-1. Required for click, double_click, scroll, drag." },
+              y: { type: "number", description: "Fraction of screenshot height, 0-1. Required for click, double_click, scroll, drag." },
+              to: {
+                type: "object",
+                description: "Where a drag releases. Required for drag, ignored otherwise.",
+                properties: {
+                  x: { type: "number", description: "Fraction of width, 0-1." },
+                  y: { type: "number", description: "Fraction of height, 0-1." },
+                },
+                required: ["x", "y"],
+              },
+              text: { type: "string", description: "The literal text to type. Required for kind=type." },
+              combo: {
+                type: "string",
+                description:
+                  'Shortcut for kind=key, lowercase and joined with "+": "enter", "ctrl+i", "ctrl+shift+left", "delete".',
+              },
+              notches: {
+                type: "number",
+                description: "Wheel notches for kind=scroll. Negative scrolls down the page. Default -3.",
+              },
+              label: { type: "string", description: 'A few words naming what this does, e.g. "search box".' },
+            },
+            required: ["kind", "label"],
+          },
         },
         done: { type: "boolean", description: "True only if the whole task is already complete." },
       },

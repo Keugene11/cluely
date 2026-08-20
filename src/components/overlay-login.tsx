@@ -4,10 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, Sparkles, X } from "lucide-react";
 import { getDesktop } from "@/lib/desktop";
+import { useReportHeight } from "@/hooks/use-report-height";
 
 /** Compact sign-in for the desktop panel — the full page does not fit a 440px window. */
 export function OverlayLogin() {
   const router = useRouter();
+  // Without this the window stays at bar height and the form below is clipped
+  // off screen, which makes signing in on the desktop impossible.
+  const rootRef = useReportHeight<HTMLDivElement>();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +39,11 @@ export function OverlayLogin() {
   }
 
   return (
-    <div className="w-full px-3 pt-3 pb-3" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+    <div
+      ref={rootRef}
+      className="w-full px-3 pt-3 pb-3"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
       <div className="cbar" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
         <span className="flex items-center gap-2.5 pl-1 text-sm font-semibold tracking-tight">
           <span className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-gradient-to-br from-indigo-400/30 to-fuchsia-400/20 ring-1 ring-white/10">

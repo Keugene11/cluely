@@ -6,7 +6,29 @@
 export type Line = { speaker: "me" | "them"; text: string; at_ms: number };
 
 export type Point = { x: number; y: number; label: string };
-export type GuideResult = { say: string; steps: string[]; point: Point | null; done: boolean };
+
+/**
+ * One thing to do on screen. Mirrors `Action` in lib/parse rather than importing
+ * it, so this model stays free of anything that touches a request.
+ */
+export type Action = {
+  kind: "click" | "double_click" | "type" | "key" | "scroll" | "drag";
+  label: string;
+  x?: number;
+  y?: number;
+  to?: { x: number; y: number };
+  text?: string;
+  combo?: string;
+  notches?: number;
+};
+export type GuideResult = {
+  say: string;
+  steps: string[];
+  point: Point | null;
+  /** Ordered things to do for this step. Empty when a single click is enough. */
+  actions?: Action[];
+  done: boolean;
+};
 
 /**
  * One turn of the conversation. There is no mode switch any more: the user

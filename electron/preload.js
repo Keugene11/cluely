@@ -23,6 +23,16 @@ contextBridge.exposeInMainWorld("cluely", {
   clearPoint: () => ipcRenderer.invoke("cluely:clear-point"),
   /** Fly the cursor to a normalized point and actually press it. */
   click: (target) => ipcRenderer.invoke("cluely:click", target),
+  /** Same, but two presses — for opening things in file lists. */
+  doubleClick: (target) => ipcRenderer.invoke("cluely:double-click", target),
+  /** Press at `from`, travel, release at `to`. Both normalized. */
+  drag: (payload) => ipcRenderer.invoke("cluely:drag", payload),
+  /** Wheel notches at a normalized point; negative scrolls toward the user. */
+  scroll: (payload) => ipcRenderer.invoke("cluely:scroll", payload),
+  /** Type literal text into whatever has focus. */
+  type: (text) => ipcRenderer.invoke("cluely:type", text),
+  /** A shortcut, e.g. "ctrl+i" or "delete". */
+  pressKeys: (combo) => ipcRenderer.invoke("cluely:press-keys", combo),
   /** For the cursor window: receive where to point (or null to hide). */
   onPointTo: (callback) => {
     const handler = (_event, target) => callback(target);

@@ -7,6 +7,49 @@ import { applyTextDeltas, type Entry, type GuideResult, type Line } from "@/lib/
 
 export type { Entry, GuideResult, Line, Point } from "@/lib/thread";
 
+type Acted = { ok: boolean; message: string };
+
+/**
+ * Run a step's actions in order, stopping at the first failure.
+ *
+ * Sequential and never parallel: these are keystrokes and clicks going into a
+ * real app, and "click the box, then type in it" only means anything if the
+ * click has landed first. The pause between actions is the same idea — apps
+ * need a beat to move focus before the next keystroke arrives.
+ *
+ * A missing bridge method means an older desktop shell than the model is
+ * emitting for, so it fails with something the user can act on instead of
+ * silently skipping the action and continuing as though it worked.
+ */
+async function performActions(
+  desktop: NonNullable<ReturnType<typeof getDesktop>>,
+  actions: NonNullable<GuideResult["actions"]>,
+): Promise<Acted> {
+  const named = (a: { label?: string; kind: string }) => a.label || a.kind.replace("_", " ");
+
+  for (const action of actions) {
+    const at = { x: action.x ?? 0.5, y: action.y ?? 0.5, label: action.label };
+    let result: Acted | undefined;
+    try {
+      if (action.kind === "click") result = await desktop.click(at);
+      else if (action.kind === "double_click") result = await desktop.doubleClick?.(at);
+      else if (action.kind === "type") result = await desktop.type?.(action.text ?? "");
+      else if (action.kind === "key") result = await desktop.pressKeys?.(action.combo ?? "");
+      else if (action.kind === "scroll")
+        result = await desktop.scroll?.({ ...at, notches: action.notches ?? -3 });
+      else if (action.kind === "drag" && action.to)
+        result = await desktop.drag?.({ from: at, to: action.to, label: action.label });
+    } catch {
+      return { ok: false, message: `Could not ${named(action)}.` };
+    }
+
+    if (!result) return { ok: false, message: `This version can't ${named(action)} yet.` };
+    if (!result.ok) return result;
+    await new Promise((r) => setTimeout(r, 220)); // let focus settle before the next one
+  }
+  return { ok: true, message: `Did ${actions.length} thing${actions.length === 1 ? "" : "s"}` };
+}
+
 /** Minimal shape of the Web Speech API we depend on. */
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -563,15 +606,23 @@ export function useLiveSession(voiceEnabled = true) {
       };
 
       const point = entry.result.point;
-      if (!point) return fail("There is nothing to click on this step — do it yourself and hit Next.");
+      const actions = entry.result.actions ?? [];
+      if (!point && actions.length === 0) {
+        return fail("There is nothing to click on this step — do it yourself and hit Next.");
+      }
 
       const desktop = getDesktop();
       if (!desktop?.click) return fail("Clicking only works in the desktop app.");
 
       patch(index, (e) => (e.kind === "guide" ? { ...e, clicking: true, error: null } : e));
-      const result = await desktop
-        .click(point)
-        .catch(() => ({ ok: false, message: "Could not click that." }));
+      // A step is either a plain click on `point` or an ordered run of actions —
+      // never both, so a step that types into a box does not also click it twice.
+      const result =
+        actions.length > 0
+          ? await performActions(desktop, actions)
+          : await desktop
+              .click(point!)
+              .catch(() => ({ ok: false, message: "Could not click that." }));
       patch(index, (e) => (e.kind === "guide" ? { ...e, clicking: false } : e));
       if (!result.ok) return fail(result.message);
 
@@ -581,7 +632,8 @@ export function useLiveSession(voiceEnabled = true) {
 
       await advanceGuide(index);
       const after = entriesRef.current[index];
-      return after?.kind === "guide" && !after.done && !after.error && after.result.point != null;
+      if (after?.kind !== "guide" || after.done || after.error) return false;
+      return after.result.point != null || (after.result.actions?.length ?? 0) > 0;
     },
     [patch, advanceGuide],
   );

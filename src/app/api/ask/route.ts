@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { sql } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import { anthropic, MODEL, ROUTER_SYSTEM, ASK_TOOLS } from "@/lib/claude";
-import { clampPoint, isSafeLaunchTarget, parseImageDataUrl } from "@/lib/parse";
+import { clampPoint, isSafeLaunchTarget, normalizeActions, parseImageDataUrl } from "@/lib/parse";
 
 export const maxDuration = 60;
 
@@ -185,6 +185,7 @@ function normalizeGuide(input: Record<string, unknown>) {
     say: typeof input.say === "string" ? input.say : "",
     steps: Array.isArray(input.steps) ? input.steps.map(String) : [],
     point: clampPoint(input.point),
+    actions: normalizeActions(input.actions),
     done: Boolean(input.done),
   };
 }

@@ -2,7 +2,14 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
 import { anthropic, GUIDE_MODEL, GUIDE_SYSTEM } from "@/lib/claude";
-import { clampPoint, parseImageDataUrl, parseModelJson, type Point } from "@/lib/parse";
+import {
+  clampPoint,
+  normalizeActions,
+  parseImageDataUrl,
+  parseModelJson,
+  type Action,
+  type Point,
+} from "@/lib/parse";
 
 export const maxDuration = 60;
 
@@ -10,6 +17,8 @@ export type GuideResult = {
   say: string;
   steps: string[];
   point: Point | null;
+  /** Ordered things to actually do for this step; empty when a click is enough. */
+  actions: Action[];
   done: boolean;
 };
 
@@ -98,6 +107,7 @@ export async function POST(req: Request) {
     // On a continuation, keep the original plan so the step list stays stable.
     steps: continuing ? plan : Array.isArray(parsedResult.steps) ? parsedResult.steps.map(String) : [],
     point: clampPoint(parsedResult.point),
+    actions: normalizeActions(parsedResult.actions),
     done: Boolean(parsedResult.done),
   };
 

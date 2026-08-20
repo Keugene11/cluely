@@ -38,8 +38,29 @@ export async function clearSessionCookie() {
   jar.delete(COOKIE);
 }
 
+/**
+ * Development escape hatch: skip the login wall and run as the first account in
+ * the database.
+ *
+ * Deliberately needs BOTH a non-production build and an explicit opt-in env var,
+ * so it cannot be turned on by a stray environment variable in prod or by
+ * forgetting to unset one locally. It returns a real row rather than a stub
+ * because a fabricated id would break anything that keys off the user.
+ */
+async function devBypassUser(): Promise<User | null> {
+  if (process.env.NODE_ENV === "production") return null;
+  if (process.env.DEV_AUTH_BYPASS !== "1") return null;
+  const rows = (await sql`
+    select id, email, name, plan, created_at from users order by created_at limit 1
+  `) as User[];
+  return rows[0] ?? null;
+}
+
 /** Returns the signed-in user, or null. */
 export async function getUser(): Promise<User | null> {
+  const bypass = await devBypassUser();
+  if (bypass) return bypass;
+
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;

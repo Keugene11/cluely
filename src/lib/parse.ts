@@ -69,6 +69,90 @@ export function clampPoint(point: unknown): Point | null {
   };
 }
 
+export const ACTION_KINDS = ["click", "double_click", "type", "key", "scroll", "drag"] as const;
+export type ActionKind = (typeof ACTION_KINDS)[number];
+
+/** One thing to do on screen. Only the fields its `kind` needs are present. */
+export type Action = {
+  kind: ActionKind;
+  label: string;
+  x?: number;
+  y?: number;
+  to?: { x: number; y: number };
+  text?: string;
+  combo?: string;
+  notches?: number;
+};
+
+const unit = (value: unknown) => Math.min(1, Math.max(0, Number(value)));
+const hasPoint = (v: Record<string, unknown>) =>
+  Number.isFinite(Number(v.x)) && Number.isFinite(Number(v.y));
+
+/**
+ * Actions drive a real mouse and keyboard on someone's desktop, so nothing from
+ * the model reaches the executor unchecked: unknown kinds are dropped, and an
+ * action missing what its kind needs is discarded rather than run with a zero
+ * filled in. Note this deliberately does NOT use clampPoint, whose missing-value
+ * fallback is 0.5 — a centre-screen click is a click on something real, and for
+ * an action that fires unattended, dropping it beats guessing.
+ *
+ * Capped at 5: the model is told to stop where it would need to look again, and
+ * a long blind sequence is where an unattended run goes wrong without noticing.
+ */
+/** Kinds that act on a coordinate, and so depend on the screenshot still being true. */
+const POSITIONAL: ReadonlySet<string> = new Set(["click", "double_click", "scroll", "drag"]);
+
+export function normalizeActions(value: unknown): Action[] {
+  if (!Array.isArray(value)) return [];
+  const out: Action[] = [];
+  let usedPosition = false;
+  for (const raw of value.slice(0, 5)) {
+    if (!raw || typeof raw !== "object") continue;
+    const a = raw as Record<string, unknown>;
+    const kind = String(a.kind) as ActionKind;
+    if (!ACTION_KINDS.includes(kind)) continue;
+    const label = typeof a.label === "string" ? a.label : "";
+
+    if (kind === "type") {
+      const text = typeof a.text === "string" ? a.text : "";
+      if (!text) continue;
+      out.push({ kind, label, text: text.slice(0, 2000) });
+      continue;
+    }
+    if (kind === "key") {
+      const combo = String(a.combo ?? "").trim().toLowerCase();
+      // The same shape the executor enforces, checked here too so a bad combo
+      // is a dropped action rather than an error partway through a run.
+      if (!/^[a-z0-9+\s]{1,40}$/.test(combo)) continue;
+      out.push({ kind, label, combo });
+      continue;
+    }
+    // Everything below acts on a coordinate read off a screenshot that is
+    // already a moment old. One is fine — the screen has not moved yet. A
+    // second is a coordinate chosen before the first action changed the page,
+    // which is how a run ends up clicking whatever slid into that spot. Cut the
+    // batch here and let the next turn look again.
+    if (usedPosition) break;
+    if (!hasPoint(a)) continue;
+    usedPosition = POSITIONAL.has(kind);
+    const x = unit(a.x);
+    const y = unit(a.y);
+    if (kind === "drag") {
+      const to = (a.to ?? {}) as Record<string, unknown>;
+      if (!hasPoint(to)) continue;
+      out.push({ kind, label, x, y, to: { x: unit(to.x), y: unit(to.y) } });
+      continue;
+    }
+    if (kind === "scroll") {
+      const n = Number(a.notches);
+      out.push({ kind, label, x, y, notches: Number.isFinite(n) ? Math.trunc(n) : -3 });
+      continue;
+    }
+    out.push({ kind, label, x, y });
+  }
+  return out;
+}
+
 /**
  * A single coordinate, clamped to [0,1]. Anything that isn't a real number —
  * null, undefined, "", a boolean, NaN — falls back to 0.5 (center) rather than

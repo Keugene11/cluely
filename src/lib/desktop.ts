@@ -22,6 +22,33 @@ export type DesktopBridge = {
   clearPoint: () => Promise<void>;
   /** Fly the cursor to a normalized point and press it for real. */
   click: (target: { x: number; y: number; label: string }) => Promise<{ ok: boolean; message: string }>;
+  /** Two presses in the double-click window — opens things in file lists. */
+  doubleClick: (target: {
+    x: number;
+    y: number;
+    label: string;
+  }) => Promise<{ ok: boolean; message: string }>;
+  /**
+   * Press at `from`, travel with the button held, release at `to`. Every
+   * timeline edit — trimming, sliding a clip, pulling a file in — is this.
+   */
+  drag: (payload: {
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    ms?: number;
+    label?: string;
+  }) => Promise<{ ok: boolean; message: string }>;
+  /** Wheel notches at a normalized point; negative scrolls toward the user. */
+  scroll: (payload: {
+    x: number;
+    y: number;
+    notches?: number;
+    label?: string;
+  }) => Promise<{ ok: boolean; message: string }>;
+  /** Type literal text into whatever currently has focus. */
+  type: (text: string) => Promise<{ ok: boolean; message: string }>;
+  /** A shortcut, e.g. "ctrl+i", "ctrl+shift+left", "delete". */
+  pressKeys: (combo: string) => Promise<{ ok: boolean; message: string }>;
   onPointTo: (
     callback: (target: { x: number; y: number; label: string } | null) => void,
   ) => () => void;
