@@ -107,7 +107,21 @@ const noSubscribe = () => () => {};
  * Everything a live session does: transcribe, buffer to Neon, answer on demand.
  * The web page and the desktop overlay are both thin views over this.
  */
-export function useLiveSession(voiceEnabled = true) {
+export type SessionOptions = {
+  /**
+   * Where a screenshot comes from, when it isn't the Electron bridge.
+   *
+   * The desktop app owns the whole display and takes it silently; the public
+   * demo has to be handed a window the visitor picked. Injecting the source
+   * keeps that difference in the view that knows about it, rather than teaching
+   * this hook what a demo is.
+   */
+  capture?: () => Promise<string | null>;
+  /** Ask the server for the unauthenticated, budgeted path. */
+  demo?: boolean;
+};
+
+export function useLiveSession(voiceEnabled = true, options: SessionOptions = {}) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
@@ -160,6 +174,11 @@ export function useLiveSession(voiceEnabled = true) {
   useEffect(() => void (askingRef.current = asking), [asking]);
   useEffect(() => void (questionRef.current = question), [question]);
   useEffect(() => void (voiceRef.current = voiceEnabled), [voiceEnabled]);
+  // The options object is a fresh literal on every render of the caller, so it
+  // is read through a ref — `ask` must stay stable enough to hang a global
+  // hotkey off, and re-subscribing that on every keystroke is not free.
+  const optionsRef = useRef(options);
+  useEffect(() => void (optionsRef.current = options), [options]);
 
   // Muting mid-sentence should stop the sentence, not just the next one.
   useEffect(() => {
@@ -419,10 +438,13 @@ export function useLiveSession(voiceEnabled = true) {
     // dispatcher has something to point at if you wanted a walkthrough.
     let image: string | null = null;
     const desktop = getDesktop();
-    if (desktop?.captureScreen) {
+    const capture =
+      optionsRef.current.capture ??
+      (desktop?.captureScreen ? () => desktop.captureScreen() : null);
+    if (capture) {
       setCapturing(true);
       try {
-        image = await desktop.captureScreen();
+        image = await capture();
       } catch {
         /* fall back to audio + text only */
       } finally {
@@ -514,7 +536,13 @@ export function useLiveSession(voiceEnabled = true) {
       const res = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sessionIdRef.current, question: typed, transcript, image }),
+        body: JSON.stringify({
+          sessionId: sessionIdRef.current,
+          question: typed,
+          transcript,
+          image,
+          demo: optionsRef.current.demo === true,
+        }),
       });
 
       if (!res.body) {

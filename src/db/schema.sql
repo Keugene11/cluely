@@ -54,3 +54,18 @@ create table if not exists context_files (
   created_at timestamptz not null default now()
 );
 create index if not exists context_user_idx on context_files(user_id, created_at desc);
+
+-- Public demo asks, kept only to rate-limit them.
+--
+-- The demo runs unauthenticated so a portfolio visitor can use the product
+-- without signing up, which means anyone can spend the Anthropic key. Counting
+-- in Postgres rather than in memory is the whole point: serverless instances
+-- come and go, and a per-instance counter is a limit an attacker can reset by
+-- waiting for a cold start.
+create table if not exists demo_asks (
+  id         bigserial primary key,
+  ip         text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists demo_asks_ip_idx on demo_asks(ip, created_at desc);
+create index if not exists demo_asks_time_idx on demo_asks(created_at desc);

@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import { anthropic, MODEL, ROUTER_SYSTEM, ASK_TOOLS } from "@/lib/claude";
 import { clampPoint, isSafeLaunchTarget, normalizeActions, parseImageDataUrl } from "@/lib/parse";
+import { clientIp, sweepDemoAsks, takeDemoQuota, DEMO_MAX_IMAGE, DEMO_MAX_QUESTION } from "@/lib/demo";
 
 export const maxDuration = 60;
 
@@ -52,22 +53,45 @@ async function contextFor(userId: string): Promise<string> {
  *   {"t":"error","v":"…"}    something went wrong mid-stream
  */
 export async function POST(req: Request) {
+  const { sessionId, question, transcript, image, demo } = await req.json();
+
+  // The public demo answers without an account. It is the same dispatcher and
+  // the same model — what it gives up is everything that belongs to a user
+  // (their uploaded context, their session log) and everything the browser
+  // cannot do anyway (walkthroughs, launching apps), plus a budget.
   const user = await getUser();
-  if (!user) return new Response("Unauthorized", { status: 401 });
+  const isDemo = !user && demo === true;
+  if (!user && !isDemo) return new Response("Unauthorized", { status: 401 });
 
-  const { sessionId, question, transcript, image } = await req.json();
+  if (isDemo) {
+    const quota = await takeDemoQuota(clientIp(req));
+    if (!quota.ok) {
+      return new Response(JSON.stringify({ t: "error", v: quota.message }) + "\n", {
+        status: 429,
+        headers: { "Content-Type": "application/x-ndjson; charset=utf-8" },
+      });
+    }
+    void sweepDemoAsks();
+  }
 
-  const context = await contextFor(user.id);
+  const context = user ? await contextFor(user.id) : "";
 
-  const tail = String(transcript ?? "").slice(-6000);
-  const ask = String(question ?? "").trim();
+  const tail = isDemo ? "" : String(transcript ?? "").slice(-6000);
+  const ask = String(question ?? "")
+    .trim()
+    .slice(0, isDemo ? DEMO_MAX_QUESTION : Infinity);
 
-  const parsedImage = parseImageDataUrl(image);
+  const rawImage = isDemo && typeof image === "string" && image.length > DEMO_MAX_IMAGE ? null : image;
+  const parsedImage = parseImageDataUrl(rawImage);
   const hasScreen = Boolean(parsedImage);
 
   const prompt = [
     context && `What the user gave you ahead of the call:\n${context}`,
-    tail ? `Live transcript (most recent last):\n${tail}` : "Live transcript: (nothing captured yet)",
+    isDemo
+      ? "This is the public demo: no microphone, no transcript, and no control of the machine. Answer what you are asked, using the screenshot if one is attached. If you are asked to click something or open an app, say plainly that doing it needs the desktop app, then explain how to do it by hand."
+      : tail
+        ? `Live transcript (most recent last):\n${tail}`
+        : "Live transcript: (nothing captured yet)",
     hasScreen
       ? "A screenshot of the user's screen right now is attached — read it and use it."
       : "No screenshot is available, so the guide tool is not usable this turn.",
@@ -92,14 +116,24 @@ export async function POST(req: Request) {
   try {
     stream = anthropic().messages.stream({
       model: MODEL,
-      max_tokens: 4096, // room for a full, explained coding solution
+      // The demo has a budget and no session to carry a long answer into, so it
+      // gets a shorter one. Everything else about the call is the real thing.
+      max_tokens: isDemo ? 1200 : 4096, // room for a full, explained coding solution
       system: ROUTER_SYSTEM,
       // Without a screenshot there is nothing to point at, so drop the guide
       // tool entirely rather than relying on the prompt to hold the line.
-      tools: (hasScreen ? ASK_TOOLS : ASK_TOOLS.filter((t) => t.name !== "guide")) as Anthropic.Tool[],
+      //
+      // The demo drops both tools: a browser tab cannot move the mouse or
+      // launch anything, and a walkthrough that offers to click for you and
+      // then cannot is a worse demo than one that never offers.
+      tools: (isDemo
+        ? []
+        : hasScreen
+          ? ASK_TOOLS
+          : ASK_TOOLS.filter((t) => t.name !== "guide")) as Anthropic.Tool[],
       tool_choice: { type: "auto" },
       thinking: { type: "adaptive" }, // reason through coding problems before answering
-      output_config: { effort: "medium" },
+      output_config: { effort: isDemo ? "low" : "medium" },
       messages: [{ role: "user", content }],
     });
   } catch {
@@ -153,7 +187,10 @@ export async function POST(req: Request) {
         // is not a transcript-worthy Q&A. This has to finish BEFORE the stream
         // closes — close first and the serverless function can be torn down
         // mid-insert, which silently drops the last answer of every session.
-        if (sessionId && answer) {
+        // `user &&` is load-bearing, not belt-and-braces: without it an
+        // unauthenticated demo caller could pass someone else's session id and
+        // write rows into their history.
+        if (user && sessionId && answer) {
           await sql`
             insert into assists (session_id, question, answer)
             values (${sessionId}, ${ask}, ${answer})

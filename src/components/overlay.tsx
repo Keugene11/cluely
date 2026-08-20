@@ -251,14 +251,17 @@ export function Overlay() {
 
 // ── The one thread ───────────────────────────────────────────────────────────
 
-function Thread({
+export function Thread({
   live,
   voice,
   onAsk,
+  empty,
 }: {
   live: ReturnType<typeof useLiveSession>;
   voice: ReturnType<typeof useVoice>;
   onAsk: (text?: string) => void;
+  /** What to show before the first message. The demo cannot promise a screen. */
+  empty?: React.ReactNode;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -268,14 +271,16 @@ function Thread({
   return (
     <>
       <div className="max-h-[460px] space-y-2.5 overflow-y-auto px-4 py-3.5">
-        {live.entries.length === 0 && !live.capturing && (
-          <div className="px-2 py-5 text-center">
-            <p className="text-sm text-foreground">Ask me anything — I can see your screen.</p>
-            <p className="mt-1.5 text-xs text-muted">
-              Answers, step-by-step walkthroughs, or opening an app. Just say which.
-            </p>
-          </div>
-        )}
+        {live.entries.length === 0 &&
+          !live.capturing &&
+          (empty ?? (
+            <div className="px-2 py-5 text-center">
+              <p className="text-sm text-foreground">Ask me anything — I can see your screen.</p>
+              <p className="mt-1.5 text-xs text-muted">
+                Answers, step-by-step walkthroughs, or opening an app. Just say which.
+              </p>
+            </div>
+          ))}
 
         {/* The handlers are passed by identity, not as fresh closures, so a
             memoized card only re-renders when its own entry changes. During a

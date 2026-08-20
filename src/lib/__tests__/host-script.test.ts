@@ -16,7 +16,13 @@ import { describe, expect, it } from "vitest";
  * against the file as written, because that difference is the whole bug.
  */
 function generatedHostScript(): string {
-  const src = readFileSync(join(process.cwd(), "electron", "executor.js"), "utf8");
+  // Normalized to LF first. core.autocrlf is on for this repo, so a checkout —
+  // switching branches is enough — rewrites the file with CRLF, and every
+  // assertion below is about the script's content, not its line terminators.
+  const src = readFileSync(join(process.cwd(), "electron", "executor.js"), "utf8").replace(
+    /\r\n/g,
+    "\n",
+  );
   const match = src.match(/const HOST_SCRIPT = (`[\s\S]*?`);\n/);
   if (!match) throw new Error("HOST_SCRIPT not found in electron/executor.js");
   // Evaluating the literal is the point: we need what JS produces, which is
