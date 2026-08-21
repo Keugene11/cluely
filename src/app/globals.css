@@ -425,3 +425,46 @@ body:has(.guide-cursor-root) {
   0% { transform: scale(0.3); opacity: 1; border-width: 4px; }
   100% { transform: scale(2.6); opacity: 0; border-width: 1px; }
 }
+
+
+/* ── Public demo: dark panel, light page ──────────────────────────────────── */
+/* The demo exists to be embedded, and it is embedded in a white page. The app's
+   near-black background read as a hole punched through that page, so only the
+   page goes light — the bar and panel stay dark glass, which is what the real
+   overlay looks like floating over someone's desktop. */
+body:has(.demo-root) {
+  background: #fafafa;
+  color: #1a1a1a;
+}
+
+.demo-root {
+  /* The same two brand radials as .aurora, at the alpha a white surface can
+     carry — enough that the panel sits on something rather than in a void. */
+  background-image:
+    radial-gradient(58% 50% at 18% 0%, rgba(110, 108, 255, 0.1), transparent 70%),
+    radial-gradient(48% 46% at 84% 8%, rgba(255, 110, 199, 0.07), transparent 70%);
+}
+
+/* Black-on-white shadows this heavy turn grey and muddy; the panel needs less
+   of one here than it does over an arbitrary desktop. */
+.demo-root .cbar,
+.demo-root .cpanel {
+  box-shadow:
+    0 18px 44px -22px rgba(18, 18, 32, 0.5),
+    0 2px 6px -3px rgba(18, 18, 32, 0.18),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.07);
+}
+
+/* Anything outside the panel is now on light and needs ink to match. */
+.demo-root .on-light {
+  color: #5a5a63;
+}
+.demo-root .on-light a {
+  color: #1a1a1a;
+}
+
+.demo-root .notice {
+  border-color: rgba(180, 123, 15, 0.3);
+  background: rgba(251, 191, 36, 0.16);
+  color: #7a4d05;
+}

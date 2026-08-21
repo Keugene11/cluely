@@ -83,7 +83,7 @@ export function DemoOtto() {
   useEffect(() => () => shareRef.current?.stop(), []);
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[760px] flex-col justify-center px-4 py-6">
+    <div className="demo-root mx-auto flex min-h-screen w-full max-w-[760px] flex-col justify-center px-4 py-6">
       {/* The bar, as it looks floating over your desktop. */}
       <div className="cbar">
         <div className="flex items-center gap-2.5 pl-1">
@@ -158,13 +158,13 @@ export function DemoOtto() {
 
       {shareError && <p className="notice mt-2">{shareError}</p>}
 
-      <p className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-relaxed text-muted">
+      <p className="on-light mt-3 flex items-start gap-2 px-1 text-[11px] leading-relaxed">
         <MonitorUp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
           This is the real assistant, answering live. The desktop app adds what a browser tab
           can&rsquo;t do: it sees your whole screen without being asked, hears the call, and clicks
           through the steps for you.{" "}
-          <a href="/download" target="_blank" className="text-foreground underline underline-offset-2">
+          <a href="/download" target="_blank" className="underline underline-offset-2">
             Download it
           </a>
           .
