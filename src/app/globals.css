@@ -449,6 +449,15 @@ body:has(.demo-root) {
    of one here than it does over an arbitrary desktop. */
 .demo-root .cbar,
 .demo-root .cpanel {
+  /* These are dark glass, but the demo page runs on a LIGHT body
+     (body:has(.demo-root) sets color:#1a1a1a), so anything inside that doesn't
+     set its own colour inherits near-black ink — invisible on the dark panel.
+     The composer <textarea> is exactly that: it has no text colour, so what you
+     typed came out black-on-black, and the caret (which follows `color`)
+     vanished with it. Pin the panels to the light foreground; the textarea and
+     any other inheriting text then read, and the caret comes back. In the
+     Electron overlay the body is already dark, so this is a harmless no-op. */
+  color: var(--foreground);
   box-shadow:
     0 18px 44px -22px rgba(18, 18, 32, 0.5),
     0 2px 6px -3px rgba(18, 18, 32, 0.18),
