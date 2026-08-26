@@ -563,7 +563,10 @@ function InputRow({
         }}
         rows={1}
         placeholder={mic?.recording ? "Listening…" : mic?.busy ? "Transcribing…" : placeholder}
-        className="flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm outline-none placeholder:text-muted focus:border-white/20"
+        // text-foreground + caret so the box is legible even if an ancestor
+        // sets a dark inherited colour (the demo runs on a light body — see
+        // globals.css). Was inheriting near-black on a dark panel: invisible.
+        className="flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm text-foreground caret-white outline-none placeholder:text-muted focus:border-white/20"
       />
       {mic && (
         <button
