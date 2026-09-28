@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import { anthropic, MODEL, ROUTER_SYSTEM, ASK_TOOLS } from "@/lib/claude";
 import { clampPoint, isSafeLaunchTarget, normalizeActions, parseImageDataUrl } from "@/lib/parse";
+import { streamDemo } from "@/lib/openrouter";
 import { clientIp, sweepDemoAsks, takeDemoQuota, DEMO_MAX_IMAGE, DEMO_MAX_QUESTION } from "@/lib/demo";
 
 export const maxDuration = 60;
@@ -55,8 +56,8 @@ async function contextFor(userId: string): Promise<string> {
 export async function POST(req: Request) {
   const { sessionId, question, transcript, image, demo } = await req.json();
 
-  // The public demo answers without an account. It is the same dispatcher and
-  // the same model — what it gives up is everything that belongs to a user
+  // The public demo answers without an account. It is the same dispatcher
+  // prompt on a cheap OpenRouter model (see lib/openrouter.ts) — what it gives up is everything that belongs to a user
   // (their uploaded context, their session log) and everything the browser
   // cannot do anyway (walkthroughs, launching apps), plus a budget.
   const user = await getUser();
@@ -101,6 +102,36 @@ export async function POST(req: Request) {
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  // The demo runs on a cheap OpenRouter model instead of Claude: it never had
+  // tools, so all it needs is streamed text (and eyes for a shared window).
+  if (isDemo) {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      async start(controller) {
+        const send = (t: string, v: unknown) =>
+          controller.enqueue(encoder.encode(JSON.stringify({ t, v }) + "\n"));
+        try {
+          for await (const chunk of streamDemo({
+            system: ROUTER_SYSTEM,
+            text: prompt,
+            image: parsedImage,
+            maxTokens: 1200,
+          })) {
+            send("text", chunk);
+          }
+        } catch (err) {
+          console.error("demo ask failed", err);
+          send("error", "That cut out. Try again.");
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(body, {
+      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
 
   // Vision: put the screenshot before the text so Claude reads it as context.
   const content: Anthropic.ContentBlockParam[] = [];
