@@ -412,7 +412,7 @@ async function captureScreen() {
   const scale = primary.scaleFactor || 1;
   const nativeW = Math.round(width * scale);
   const nativeH = Math.round(height * scale);
-  const cap = 1568; // Claude downsamples beyond ~1568px on the long edge anyway
+  const cap = 1568; // vision models downsample beyond ~1568px on the long edge anyway
   const factor = Math.min(1, cap / Math.max(nativeW, nativeH));
 
   // Exclude our windows from the capture without hiding them. Remember the
@@ -439,7 +439,7 @@ async function captureScreen() {
     // 44ms to encode into a 468KB data URL, JPEG q80 took 4ms for 122KB — and
     // that was a near-empty desktop, which is PNG's best case. The payload is
     // base64'd into a JSON body and uploaded on every ask, so it is pure
-    // round-trip latency. Quality 80 is well above what Claude needs to read
+    // round-trip latency. Quality 80 is well above what the model needs to read
     // UI text.
     return `data:image/jpeg;base64,${source.thumbnail.toJPEG(80).toString("base64")}`;
   } catch {

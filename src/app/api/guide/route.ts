@@ -1,7 +1,7 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
-import { anthropic, GUIDE_MODEL, GUIDE_SYSTEM } from "@/lib/claude";
+import { GUIDE_SYSTEM } from "@/lib/prompts";
+import { completeJson } from "@/lib/openrouter";
 import {
   clampPoint,
   normalizeActions,
@@ -85,40 +85,22 @@ export async function POST(req: Request) {
       : "The user asked for help with what's on screen but didn't say what. Guide them on the most useful next step for whatever they're working on.";
   }
 
-  const content: Anthropic.ContentBlockParam[] = [
-    {
-      type: "image",
-      source: { type: "base64", media_type: parsed.mediaType, data: parsed.data },
-    },
-    { type: "text", text: instruction },
-  ];
-
-  let response;
+  let text: string;
   try {
-    response = await anthropic().messages.create({
-      model: GUIDE_MODEL,
-      max_tokens: 900, // the per-step JSON is small; steps are not re-sent
+    // Reasoning stays off here (see lib/openrouter.ts), deliberately. A step is
+    // perception — read the screenshot, name the control, say whether the last
+    // action landed — and it sits between one click and the next, where latency
+    // is the whole experience.
+    text = await completeJson({
       system: GUIDE_SYSTEM,
-      // No extended thinking here, deliberately. A step is perception — read the
-      // screenshot, name the control, say whether the last action landed — and it
-      // sits between one click and the next, where latency is the whole
-      // experience. Thinking was costing seconds per step for a judgement the
-      // model makes correctly without it.
-      output_config: { effort: "low" },
-      messages: [{ role: "user", content }],
+      text: instruction,
+      image: parsed,
+      maxTokens: 900, // the per-step JSON is small; steps are not re-sent
     });
   } catch (err) {
     console.error("guide failed", err);
-    return NextResponse.json(
-      { error: "Could not reach Claude. Check ANTHROPIC_API_KEY." },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: "Could not reach the model. Try again." }, { status: 503 });
   }
-
-  const text = response.content
-    .filter((b) => b.type === "text")
-    .map((b) => (b as { text: string }).text)
-    .join("");
 
   const parsedResult = parseModelJson<GuideResult>(text);
   if (!parsedResult) {
@@ -135,7 +117,8 @@ export async function POST(req: Request) {
     // Only a real boolean counts. A missing or malformed value must not read as
     // "yes it happened" — an unverified step is treated as unverified.
     happened: typeof parsedResult.happened === "boolean" ? parsedResult.happened : null,
-    done: Boolean(parsedResult.done),
+    // Pending actions mean it is not done yet: a done step is never executed.
+    done: Boolean(parsedResult.done) && normalizeActions(parsedResult.actions).length === 0,
   };
 
   return NextResponse.json({ result });

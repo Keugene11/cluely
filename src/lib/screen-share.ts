@@ -15,7 +15,7 @@
  * finishes.
  */
 
-/** Longest edge of the screenshot sent to Claude. */
+/** Longest edge of the screenshot sent to the model. */
 const MAX_EDGE = 1400;
 
 /** JPEG rather than PNG: a screenshot of text is large, and this is a POST. */

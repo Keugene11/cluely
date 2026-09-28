@@ -453,7 +453,7 @@ export function useLiveSession(voiceEnabled = true, options: SessionOptions = {}
     }
 
     /**
-     * Where a tool result goes. Claude can emit a sentence of text and *then*
+     * Where a tool result goes. The model can emit a sentence of text and *then*
      * call a tool; when it does, the text is worth keeping, so the tool result
      * lands in a new row instead of overwriting it.
      */

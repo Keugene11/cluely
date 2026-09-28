@@ -1,38 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 /**
- * The dispatcher model — /api/ask, which decides what the user wanted and, most
- * of the time, answers a real question (a coding problem, a slide, a
- * spreadsheet). This is the one whose reasoning quality the user actually sees.
+ * Otto's system prompts and the dispatcher's tool definitions. The models that
+ * run them, and the OpenRouter client, live in lib/openrouter.ts.
  */
-export const MODEL = "claude-sonnet-5";
-
-/**
- * The walkthrough model — /api/guide, which does one narrow thing per call:
- * look at a fresh screenshot and return the coordinate of one control. It runs
- * once per step, on the critical path between one click and the next, so
- * latency here is felt directly.
- *
- * Split from MODEL so the two can be tuned independently — they are the same
- * today, but these are not the same job.
- */
-export const GUIDE_MODEL = "claude-sonnet-5";
-
-let client: Anthropic | null = null;
-
-export function anthropic() {
-  if (client) return client;
-  try {
-    // With no explicit key the SDK falls back to ANTHROPIC_API_KEY,
-    // ANTHROPIC_AUTH_TOKEN, or a local `ant auth login` profile.
-    client = process.env.ANTHROPIC_API_KEY
-      ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-      : new Anthropic();
-  } catch {
-    throw new Error("No Anthropic credentials found — set ANTHROPIC_API_KEY in .env.local.");
-  }
-  return client;
-}
 
 export const GUIDE_SYSTEM = `You are a friendly on-screen tutor who walks the user through a task in the app open on their screen — video editing, design, spreadsheets, whatever — one step at a time, like a patient expert sitting next to them. You are given a screenshot of their current screen.
 
@@ -56,7 +25,7 @@ Return JSON only, matching exactly:
   At most ONE action per turn may use x/y (click, double_click, scroll, drag), and it must be first. Once it runs the page may have moved, so any later coordinate is read from a screenshot that is no longer true and will be dropped. "type" and "key" go to whatever has focus rather than to a coordinate, so they chain safely after it — click the search box, type the query, press enter is one good turn.
 - "expect": one short sentence naming what will be visibly TRUE on screen once this step has worked, judged from a screenshot alone. Be concrete and checkable: "the CapCut editor is open with an empty timeline", "a file picker dialog is showing", "the clip appears on the timeline". Not "the click worked" or "the project is created" — name what a person would SEE. This is how the next turn tells whether the step actually happened.
 - "happened": when you are told what the previous step expected, look at the screenshot and answer honestly — true if that is now visibly the case, false if it is not. Use null only on the first turn, when there is nothing to check yet. Being wrong here is worse than being slow: a false "true" ends the run believing work was done that was not. If you cannot see the expected thing, it is false.
-- "done": true only when the whole task is complete (or this was the last step); false while there are more steps to go.
+- "done": true only when the whole task is complete (or this was the last step); false while there are more steps to go. If you are returning any "actions" this turn, "done" is false: nothing has happened until they run, and you will get a fresh screenshot to confirm it.
 
 To bring an application to the front, use an action of {"kind": "focus", "app": "capcut", "label": "CapCut"}. Do NOT click its taskbar button or desktop icon to do this. A taskbar button toggles — the second click minimises the window the first one restored — so trying again makes it worse, and this is exactly how runs get stuck opening and re-hiding the same app. "focus" restores a minimised window properly and works whether or not the app is already running. Nothing aimed at a coordinate may follow it in the same turn, because the screen will have changed completely; take the next look first.
 
@@ -214,7 +183,11 @@ export const ASK_TOOLS = [
           description:
             "One short sentence naming what will be visibly TRUE on screen once this step has worked, judged from a screenshot alone. Concrete and checkable — \"the CapCut editor is open with an empty timeline\", \"a file picker dialog is showing\" — not \"the click worked\". This is how the next turn tells whether the step actually happened, so name what a person would SEE.",
         },
-        done: { type: "boolean", description: "True only if the whole task is already complete." },
+        done: {
+          type: "boolean",
+          description:
+            "True only if the whole task is already complete before anything in this turn runs. False whenever you return actions or a point to press.",
+        },
       },
       // `point` is deliberately optional: a required nullable field is the kind
       // of schema tool-callers get wrong, and an omitted point already means

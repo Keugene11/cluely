@@ -1,9 +1,8 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { sql } from "@/lib/db";
 import { getUser } from "@/lib/auth";
-import { anthropic, MODEL, ROUTER_SYSTEM, ASK_TOOLS } from "@/lib/claude";
+import { ROUTER_SYSTEM, ASK_TOOLS } from "@/lib/prompts";
 import { clampPoint, isSafeLaunchTarget, normalizeActions, parseImageDataUrl } from "@/lib/parse";
-import { streamDemo } from "@/lib/openrouter";
+import { streamChat } from "@/lib/openrouter";
 import { clientIp, sweepDemoAsks, takeDemoQuota, DEMO_MAX_IMAGE, DEMO_MAX_QUESTION } from "@/lib/demo";
 
 export const maxDuration = 60;
@@ -11,7 +10,7 @@ export const maxDuration = 60;
 /**
  * The user's uploaded context, briefly cached per warm instance.
  *
- * This query sits directly in front of the Claude call on every single ask, so
+ * This query sits directly in front of the model call on every single ask, so
  * its round trip is dead time the user waits through before the first token.
  * Context files change on the order of days; asks come seconds apart. Ten
  * seconds is short enough that a file uploaded mid-session shows up on the next
@@ -40,7 +39,7 @@ async function contextFor(userId: string): Promise<string> {
 
 /**
  * The dispatcher. One request decides what the user wanted instead of making
- * them pick a mode first: Claude either streams a text answer (the common
+ * them pick a mode first: the model either streams a text answer (the common
  * case) or calls a tool to start a walkthrough or launch something.
  *
  * The response is newline-delimited JSON so the client can tell those apart
@@ -57,7 +56,7 @@ export async function POST(req: Request) {
   const { sessionId, question, transcript, image, demo } = await req.json();
 
   // The public demo answers without an account. It is the same dispatcher
-  // prompt on a cheap OpenRouter model (see lib/openrouter.ts) — what it gives up is everything that belongs to a user
+  // prompt on the same model — what it gives up is everything that belongs to a user
   // (their uploaded context, their session log) and everything the browser
   // cannot do anyway (walkthroughs, launching apps), plus a budget.
   const user = await getUser();
@@ -103,79 +102,12 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
-  // The demo runs on a cheap OpenRouter model instead of Claude: it never had
-  // tools, so all it needs is streamed text (and eyes for a shared window).
-  if (isDemo) {
-    const encoder = new TextEncoder();
-    const body = new ReadableStream({
-      async start(controller) {
-        const send = (t: string, v: unknown) =>
-          controller.enqueue(encoder.encode(JSON.stringify({ t, v }) + "\n"));
-        try {
-          for await (const chunk of streamDemo({
-            system: ROUTER_SYSTEM,
-            text: prompt,
-            image: parsedImage,
-            maxTokens: 1200,
-          })) {
-            send("text", chunk);
-          }
-        } catch (err) {
-          console.error("demo ask failed", err);
-          send("error", "That cut out. Try again.");
-        } finally {
-          controller.close();
-        }
-      },
-    });
-    return new Response(body, {
-      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
-    });
-  }
-
-  // Vision: put the screenshot before the text so Claude reads it as context.
-  const content: Anthropic.ContentBlockParam[] = [];
-  if (parsedImage) {
-    content.push({
-      type: "image",
-      source: { type: "base64", media_type: parsedImage.mediaType, data: parsedImage.data },
-    });
-  }
-  content.push({ type: "text", text: prompt });
-
-  let stream;
-  try {
-    stream = anthropic().messages.stream({
-      model: MODEL,
-      // The demo has a budget and no session to carry a long answer into, so it
-      // gets a shorter one. Everything else about the call is the real thing.
-      max_tokens: isDemo ? 1200 : 4096, // room for a full, explained coding solution
-      system: ROUTER_SYSTEM,
-      // Without a screenshot there is nothing to point at, so drop the guide
-      // tool entirely rather than relying on the prompt to hold the line.
-      //
-      // The demo drops both tools: a browser tab cannot move the mouse or
-      // launch anything, and a walkthrough that offers to click for you and
-      // then cannot is a worse demo than one that never offers.
-      tools: (isDemo
-        ? []
-        : hasScreen
-          ? ASK_TOOLS
-          : ASK_TOOLS.filter((t) => t.name !== "guide")) as Anthropic.Tool[],
-      tool_choice: { type: "auto" },
-      thinking: { type: "adaptive" }, // reason through coding problems before answering
-      output_config: { effort: isDemo ? "low" : "medium" },
-      messages: [{ role: "user", content }],
-    });
-  } catch {
-    return new Response(
-      JSON.stringify({
-        t: "error",
-        v: "Otto has no Anthropic credentials. Add ANTHROPIC_API_KEY to .env.local and restart.",
-      }) + "\n",
-      { status: 503, headers: { "Content-Type": "application/x-ndjson; charset=utf-8" } },
-    );
-  }
+  // Without a screenshot there is nothing to point at, so drop the guide tool
+  // entirely rather than relying on the prompt to hold the line. The demo drops
+  // both: a browser tab cannot move the mouse or launch anything, and a
+  // walkthrough that offers to click for you and then cannot is a worse demo
+  // than one that never offers.
+  const tools = isDemo ? [] : hasScreen ? ASK_TOOLS : ASK_TOOLS.filter((t) => t.name !== "guide");
 
   const encoder = new TextEncoder();
   let answer = "";
@@ -185,30 +117,20 @@ export async function POST(req: Request) {
       const send = (t: string, v: unknown) =>
         controller.enqueue(encoder.encode(JSON.stringify({ t, v }) + "\n"));
 
-      // Tool inputs stream in as partial JSON fragments; accumulate per block.
-      const pending = new Map<number, { name: string; json: string }>();
-
       try {
-        for await (const event of stream) {
-          if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
-            pending.set(event.index, { name: event.content_block.name, json: "" });
-          } else if (event.type === "content_block_delta") {
-            if (event.delta.type === "text_delta") {
-              answer += event.delta.text;
-              send("text", event.delta.text);
-            } else if (event.delta.type === "input_json_delta") {
-              const slot = pending.get(event.index);
-              if (slot) slot.json += event.delta.partial_json;
-            }
-          } else if (event.type === "content_block_stop") {
-            const slot = pending.get(event.index);
-            if (!slot) continue;
-            pending.delete(event.index);
-            const parsed = safeParse(slot.json);
-            if (!parsed) continue;
-            if (slot.name === "guide") send("guide", normalizeGuide(parsed));
-            else if (slot.name === "open") send("open", normalizeOpen(parsed));
-          }
+        for await (const event of streamChat({
+          system: ROUTER_SYSTEM,
+          text: prompt,
+          image: parsedImage,
+          // The demo has a budget and no session to carry a long answer into.
+          maxTokens: isDemo ? 1200 : 4096, // room for a full, explained coding solution
+          tools,
+        })) {
+          if (event.type === "text") {
+            answer += event.text;
+            send("text", event.text);
+          } else if (event.name === "guide") send("guide", normalizeGuide(event.input));
+          else if (event.name === "open") send("open", normalizeOpen(event.input));
         }
       } catch (err) {
         console.error("ask stream failed", err);
@@ -237,16 +159,6 @@ export async function POST(req: Request) {
   });
 }
 
-function safeParse(json: string): Record<string, unknown> | null {
-  if (!json.trim()) return null;
-  try {
-    const value = JSON.parse(json);
-    return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Same shape /api/guide returns, so the client renders both identically. */
 function normalizeGuide(input: Record<string, unknown>) {
   return {
@@ -256,7 +168,10 @@ function normalizeGuide(input: Record<string, unknown>) {
     actions: normalizeActions(input.actions),
     expect: typeof input.expect === "string" ? input.expect.slice(0, 300) : "",
     happened: null, // nothing has been attempted yet on the opening turn
-    done: Boolean(input.done),
+    // Actions that have not run yet mean the task is not done, whatever the
+    // model claims (cheap models say "I have clicked it" and set done); a done
+    // step is never executed, so trusting the flag would skip the work.
+    done: Boolean(input.done) && normalizeActions(input.actions).length === 0,
   };
 }
 

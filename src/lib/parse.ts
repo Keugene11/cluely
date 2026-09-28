@@ -62,9 +62,11 @@ export type Point = { x: number; y: number; label: string };
 export function clampPoint(point: unknown): Point | null {
   if (!point || typeof point !== "object") return null;
   const p = point as Partial<Point>;
+  const k = scaleOf(p.x, p.y);
   return {
-    x: coord(p.x),
-    y: coord(p.y),
+    // Only rescale real numbers, so a missing value still falls back to centre.
+    x: coord(k === 1 || typeof p.x !== "number" ? p.x : p.x / k),
+    y: coord(k === 1 || typeof p.y !== "number" ? p.y : p.y / k),
     label: typeof p.label === "string" ? p.label : "",
   };
 }
@@ -95,6 +97,21 @@ export type Action = {
 };
 
 const unit = (value: unknown) => Math.min(1, Math.max(0, Number(value)));
+
+/**
+ * What a coordinate pair is measured in. The prompts ask for fractions (0-1),
+ * but Gemini reads screenshots in its native 0-1000 grid and answers in it
+ * regardless (the Crop button at 7%, 14% comes back as 70, 140). A pair with
+ * either value above 2 cannot be a fraction, so it is read on that grid —
+ * clamping it instead would slam every click into the bottom-right corner.
+ * Values just over 1 stay fractions that are clamped, as before.
+ */
+export function scaleOf(x: unknown, y: unknown): number {
+  const nx = Number(x);
+  const ny = Number(y);
+  const big = (n: number) => Number.isFinite(n) && n > 2;
+  return big(nx) || big(ny) ? 1000 : 1;
+}
 const hasPoint = (v: Record<string, unknown>) =>
   Number.isFinite(Number(v.x)) && Number.isFinite(Number(v.y));
 
@@ -157,12 +174,14 @@ export function normalizeActions(value: unknown): Action[] {
     if (usedPosition) break;
     if (!hasPoint(a)) continue;
     usedPosition = POSITIONAL.has(kind);
-    const x = unit(a.x);
-    const y = unit(a.y);
+    const k = scaleOf(a.x, a.y);
+    const x = unit(Number(a.x) / k);
+    const y = unit(Number(a.y) / k);
     if (kind === "drag") {
       const to = (a.to ?? {}) as Record<string, unknown>;
       if (!hasPoint(to)) continue;
-      out.push({ kind, label, x, y, to: { x: unit(to.x), y: unit(to.y) } });
+      const kt = scaleOf(to.x, to.y);
+      out.push({ kind, label, x, y, to: { x: unit(Number(to.x) / kt), y: unit(Number(to.y) / kt) } });
       continue;
     }
     if (kind === "scroll") {

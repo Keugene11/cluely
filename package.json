@@ -18,7 +18,6 @@
     "sim": "electron scripts/sim/run.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
     "@neondatabase/serverless": "^1.1.0",
     "bcryptjs": "^3.0.3",
     "electron-updater": "^6.8.9",

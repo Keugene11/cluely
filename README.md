@@ -5,11 +5,11 @@ sees your screen, and helps with whatever is in front of you. Ask it a question 
 answers. Ask it to do something and it takes on the app you are in, one step at a time,
 flying a cursor to the exact control — and pressing it for you if you want.
 
-Built with Next.js (App Router), Electron, Neon Postgres, and Claude.
+Built with Next.js (App Router), Electron, Neon Postgres, and OpenRouter (Gemini 3.1 Flash-Lite, DeepSeek V4.1 Flash as fallback).
 
 ## What it does
 
-You never pick a mode. Every request goes through one Claude call (`/api/ask`) that looks at
+You never pick a mode. Every request goes through one model call (`/api/ask`) that looks at
 your screen, the live transcript and your uploaded context, and decides between three things:
 
 - **Answer** — a coding problem, a question on screen, a multiple-choice item, or the thing
@@ -22,7 +22,7 @@ your screen, the live transcript and your uploaded context, and decides between 
 A walkthrough (`/api/guide`) runs a loop, once per step, each turn against a **fresh
 screenshot**:
 
-- **Point** — Claude returns the one element for the current step as a normalized `x`/`y`
+- **Point** — the model returns the one element for the current step as a normalized `x`/`y`
   plus a label. A separate full-screen, click-through Electron window (`/guide-cursor`) draws
   a cursor that glides to that spot over whatever app you are in.
 - **Speak** — the step is narrated aloud through speech synthesis, so you can keep your eyes
@@ -120,7 +120,7 @@ desktop-only extras:
 The desktop app is a thin shell that loads the hosted web app, so distribution is two moving
 parts:
 
-1. **Backend on Vercel.** `next build` deploys with `DATABASE_URL`, `ANTHROPIC_API_KEY`, and
+1. **Backend on Vercel.** `next build` deploys with `DATABASE_URL`, `OPENROUTER_API_KEY`, and
    `AUTH_SECRET` set as production env vars. `.vercelignore` keeps the Electron build
    artifacts out of the upload.
 2. **Installer on GitHub Releases.** `pnpm dist` builds the NSIS installer with
@@ -165,7 +165,7 @@ pnpm test                    # vitest
 | Variable            | What it is                                                    |
 | ------------------- | ------------------------------------------------------------- |
 | `DATABASE_URL`      | Neon Postgres connection string (use the pooled host)          |
-| `ANTHROPIC_API_KEY` | Powers answers, walkthroughs, and meeting notes                |
+| `OPENROUTER_API_KEY` | Powers answers, walkthroughs, and meeting notes (server-side only) |
 | `AUTH_SECRET`       | Signs the session cookie — any long random string              |
 
 Speech recognition uses the Web Speech API, so transcription needs Chrome or Edge. Other
@@ -201,7 +201,8 @@ src/
   hooks/
     use-live-session.ts   shared session logic (web + overlay), and the guide loop
   lib/
-    claude.ts             Anthropic client, models, and the system prompts
+    prompts.ts            the system prompts and the dispatcher's tools
+    openrouter.ts         the OpenRouter client (models, streaming, tool calls)
     db.ts                 Neon client and row types
     auth.ts               password hashing, JWT cookie, getUser/requireUser
     demo.ts               per-IP quota for the public demo

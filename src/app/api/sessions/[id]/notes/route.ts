@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sql, type MeetingNotes } from "@/lib/db";
 import { getUser } from "@/lib/auth";
-import { anthropic, MODEL, NOTES_SYSTEM } from "@/lib/claude";
+import { NOTES_SYSTEM } from "@/lib/prompts";
+import { completeJson } from "@/lib/openrouter";
 import { parseModelJson } from "@/lib/parse";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -28,32 +29,17 @@ export async function POST(_req: Request, { params }: Ctx) {
     .map((l) => `${l.speaker === "me" ? "Me" : "Them"}: ${l.text}`)
     .join("\n");
 
-  let response;
+  let text: string;
   try {
-    response = await anthropic().messages.create({
-      model: MODEL,
-      max_tokens: 8000,
+    text = await completeJson({
       system: NOTES_SYSTEM,
-      thinking: { type: "adaptive" },
-      messages: [
-        {
-          role: "user",
-          content: `Session title: ${rows[0].title}\nType: ${rows[0].kind}\n\nTranscript:\n${transcript}`,
-        },
-      ],
+      text: `Session title: ${rows[0].title}\nType: ${rows[0].kind}\n\nTranscript:\n${transcript}`,
+      maxTokens: 4000,
     });
   } catch (err) {
     console.error("notes generation failed", err);
-    return NextResponse.json(
-      { error: "Could not reach Claude. Check ANTHROPIC_API_KEY in .env.local." },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: "Could not reach the model. Try again." }, { status: 503 });
   }
-
-  const text = response.content
-    .filter((b) => b.type === "text")
-    .map((b) => (b as { text: string }).text)
-    .join("");
 
   const notes = parseModelJson<MeetingNotes>(text);
   if (!notes) {

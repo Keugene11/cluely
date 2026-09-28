@@ -127,7 +127,8 @@ describe("normalizeActions", () => {
   });
 
   it("clamps coordinates into frame", () => {
-    const [a] = normalizeActions([{ kind: "click", label: "x", x: 9, y: -4 }]);
+    // (A value above 2 is read on the 0-1000 grid instead; see the grid tests.)
+    const [a] = normalizeActions([{ kind: "click", label: "x", x: 1.5, y: -4 }]);
     expect(a).toMatchObject({ x: 1, y: 0 });
   });
 
@@ -235,5 +236,24 @@ describe("normalizeActions", () => {
   it("caps a run at five actions", () => {
     // focus-relative, so the positional guard is not what does the trimming
     expect(normalizeActions(Array(9).fill({ kind: "key", label: "k", combo: "a" }))).toHaveLength(5);
+  });
+});
+
+describe("0-1000 grid coordinates (Gemini's native form)", () => {
+  it("rescales a point read on the 0-1000 grid", () => {
+    expect(clampPoint({ x: 70, y: 140, label: "Crop" })).toEqual({ x: 0.07, y: 0.14, label: "Crop" });
+  });
+  it("rescales actions, including a drag's release point", () => {
+    expect(
+      normalizeActions([{ kind: "drag", label: "d", x: 100, y: 200, to: { x: 500, y: 600 } }]),
+    ).toEqual([{ kind: "drag", label: "d", x: 0.1, y: 0.2, to: { x: 0.5, y: 0.6 } }]);
+    expect(normalizeActions([{ kind: "click", label: "Export", x: 905, y: 923 }])).toEqual([
+      { kind: "click", label: "Export", x: 0.905, y: 0.923 },
+    ]);
+  });
+  it("leaves fractions alone", () => {
+    expect(normalizeActions([{ kind: "click", label: "b", x: 0.9, y: 1.2 }])).toEqual([
+      { kind: "click", label: "b", x: 0.9, y: 1 },
+    ]);
   });
 });

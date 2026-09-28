@@ -41,7 +41,7 @@ export function clientIp(req: Request): string {
 /**
  * Whether this demo ask is within budget, and the record that it happened.
  *
- * Counted before the Claude call rather than after: a request that streams for
+ * Counted before the model call rather than after: a request that streams for
  * thirty seconds has already been paid for by the time it finishes, so waiting
  * for the end to count it would let a burst through the gate together.
  */
